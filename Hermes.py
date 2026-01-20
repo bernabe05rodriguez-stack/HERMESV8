@@ -2589,18 +2589,18 @@ class Hermes:
         """Configura los atajos de teclado globales."""
         # Usar bind_all para asegurar que se capturen globalmente
         # Teclado numérico superior
-        self.root.bind_all("<Control-Key-1>", lambda event: self._shortcut_whatsapp_normal())
-        self.root.bind_all("<Control-Key-2>", lambda event: self._shortcut_whatsapp_business())
-        self.root.bind_all("<Control-Key-3>", lambda event: self._shortcut_sms())
-        self.root.bind_all("<Control-Key-4>", lambda event: self._shortcut_home())
-        self.root.bind_all("<Control-Key-5>", lambda event: self._shortcut_settings())
+        self.root.bind_all("<Key-1>", lambda event: self._shortcut_whatsapp_normal())
+        self.root.bind_all("<Key-2>", lambda event: self._shortcut_whatsapp_business())
+        self.root.bind_all("<Key-3>", lambda event: self._shortcut_sms())
+        self.root.bind_all("<Key-4>", lambda event: self._shortcut_settings())
+        self.root.bind_all("<Key-5>", lambda event: self._shortcut_home())
 
         # Teclado numérico (Numpad)
-        self.root.bind_all("<Control-KP_1>", lambda event: self._shortcut_whatsapp_normal())
-        self.root.bind_all("<Control-KP_2>", lambda event: self._shortcut_whatsapp_business())
-        self.root.bind_all("<Control-KP_3>", lambda event: self._shortcut_sms())
-        self.root.bind_all("<Control-KP_4>", lambda event: self._shortcut_home())
-        self.root.bind_all("<Control-KP_5>", lambda event: self._shortcut_settings())
+        self.root.bind_all("<KP_1>", lambda event: self._shortcut_whatsapp_normal())
+        self.root.bind_all("<KP_2>", lambda event: self._shortcut_whatsapp_business())
+        self.root.bind_all("<KP_3>", lambda event: self._shortcut_sms())
+        self.root.bind_all("<KP_4>", lambda event: self._shortcut_settings())
+        self.root.bind_all("<KP_5>", lambda event: self._shortcut_home())
 
     def _shortcut_whatsapp_normal(self):
         self._execute_shortcut_action("whatsapp", "WhatsApp Normal")

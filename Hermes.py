@@ -4571,6 +4571,8 @@ class Hermes:
                         number = number_part
 
                     if number:
+                        self.log(f"[{device}] Esperando 3s antes de llamada...", 'info')
+                        self._controlled_sleep(3)
                         self.log(f"[{device}] Iniciando llamada a {number}...", 'info')
                         self._perform_call(device, number, self.sms_call_duration.get())
                 except Exception as e:

@@ -623,6 +623,9 @@ class Hermes:
         # NO llamar a _update_main_layout todavía porque los widgets no están packeados
         # self._update_main_layout(self.root.winfo_width())
 
+        # Configurar atajos globales
+        self.setup_global_shortcuts()
+
         # INICIAR EN EL MENÚ DE INICIO
         self.setup_start_menu()
 
@@ -2581,6 +2584,75 @@ class Hermes:
             self.stat_per_whatsapp.configure(text=f"Mensajes por WhatsApp: ~{messages_per_whatsapp}")
         else:
             self.stat_per_whatsapp.configure(text="Mensajes por WhatsApp: --")
+
+    def setup_global_shortcuts(self):
+        """Configura los atajos de teclado globales."""
+        # Se usan bindings al root para que funcionen globalmente en la ventana
+        self.root.bind("<Control-1>", lambda event: self._shortcut_whatsapp_normal())
+        self.root.bind("<Control-2>", lambda event: self._shortcut_whatsapp_business())
+        self.root.bind("<Control-3>", lambda event: self._shortcut_sms())
+        self.root.bind("<Control-4>", lambda event: self._shortcut_home())
+        self.root.bind("<Control-5>", lambda event: self._shortcut_settings())
+
+    def _shortcut_whatsapp_normal(self):
+        self._execute_shortcut_action("whatsapp", "WhatsApp Normal")
+
+    def _shortcut_whatsapp_business(self):
+        self._execute_shortcut_action("business", "WhatsApp Business")
+
+    def _shortcut_sms(self):
+        self._execute_shortcut_action("sms", "SMS App")
+
+    def _shortcut_home(self):
+        self._execute_shortcut_action("home", "Inicio")
+
+    def _shortcut_settings(self):
+        self._execute_shortcut_action("settings", "Ajustes")
+
+    def _execute_shortcut_action(self, action_type, action_name):
+        """Ejecuta una acción de atajo en todos los dispositivos conectados."""
+        if self.is_running:
+            return  # No hacer nada si hay una campaña activa (incluyendo pausa)
+
+        # Verificar si hay dispositivos (silenciosamente o con log)
+        if not self.devices:
+            self.log("No hay dispositivos detectados para ejecutar el atajo.", "warning")
+            return
+
+        self.log(f"Ejecutando atajo: {action_name} en {len(self.devices)} dispositivos...", "info")
+
+        def task():
+            threads = []
+            for device in self.devices:
+                t = threading.Thread(target=self._perform_shortcut_on_device, args=(device, action_type))
+                threads.append(t)
+                t.start()
+
+            for t in threads:
+                t.join()
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _perform_shortcut_on_device(self, device, action_type):
+        """Realiza la acción específica en un dispositivo."""
+        try:
+            # Despertar pantalla primero
+            self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=2)
+
+            if action_type == "whatsapp":
+                self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-n', 'com.whatsapp/.Main'], timeout=5)
+            elif action_type == "business":
+                self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-n', 'com.whatsapp.w4b/.Main'], timeout=5)
+            elif action_type == "sms":
+                # Intentar abrir la app de mensajería predeterminada
+                self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.APP_MESSAGING'], timeout=5)
+            elif action_type == "home":
+                self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_HOME'], timeout=5)
+            elif action_type == "settings":
+                self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-a', 'android.settings.SETTINGS'], timeout=5)
+        except Exception as e:
+            # Usar print para no saturar el log principal desde hilos si falla
+            print(f"Error shortcut {action_type} {device}: {e}")
 
     def auto_detect_adb(self):
         """Busca adb.exe en las carpetas comunes del proyecto."""

@@ -2587,12 +2587,20 @@ class Hermes:
 
     def setup_global_shortcuts(self):
         """Configura los atajos de teclado globales."""
-        # Se usan bindings al root para que funcionen globalmente en la ventana
-        self.root.bind("<Control-1>", lambda event: self._shortcut_whatsapp_normal())
-        self.root.bind("<Control-2>", lambda event: self._shortcut_whatsapp_business())
-        self.root.bind("<Control-3>", lambda event: self._shortcut_sms())
-        self.root.bind("<Control-4>", lambda event: self._shortcut_home())
-        self.root.bind("<Control-5>", lambda event: self._shortcut_settings())
+        # Usar bind_all para asegurar que se capturen globalmente
+        # Teclado numérico superior
+        self.root.bind_all("<Control-Key-1>", lambda event: self._shortcut_whatsapp_normal())
+        self.root.bind_all("<Control-Key-2>", lambda event: self._shortcut_whatsapp_business())
+        self.root.bind_all("<Control-Key-3>", lambda event: self._shortcut_sms())
+        self.root.bind_all("<Control-Key-4>", lambda event: self._shortcut_home())
+        self.root.bind_all("<Control-Key-5>", lambda event: self._shortcut_settings())
+
+        # Teclado numérico (Numpad)
+        self.root.bind_all("<Control-KP_1>", lambda event: self._shortcut_whatsapp_normal())
+        self.root.bind_all("<Control-KP_2>", lambda event: self._shortcut_whatsapp_business())
+        self.root.bind_all("<Control-KP_3>", lambda event: self._shortcut_sms())
+        self.root.bind_all("<Control-KP_4>", lambda event: self._shortcut_home())
+        self.root.bind_all("<Control-KP_5>", lambda event: self._shortcut_settings())
 
     def _shortcut_whatsapp_normal(self):
         self._execute_shortcut_action("whatsapp", "WhatsApp Normal")
@@ -2611,8 +2619,11 @@ class Hermes:
 
     def _execute_shortcut_action(self, action_type, action_name):
         """Ejecuta una acción de atajo en todos los dispositivos conectados."""
+        print(f"DEBUG: Shortcut triggered for {action_name}") # Debug console output
+
         if self.is_running:
-            return  # No hacer nada si hay una campaña activa (incluyendo pausa)
+            self.log(f"Atajo {action_name} ignorado: campaña en curso.", "warning")
+            return
 
         # Verificar si hay dispositivos (silenciosamente o con log)
         if not self.devices:

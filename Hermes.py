@@ -2653,7 +2653,7 @@ class Hermes:
             if action_type == "whatsapp":
                 self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-n', 'com.whatsapp/.Main'], timeout=5)
             elif action_type == "business":
-                self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-n', 'com.whatsapp.w4b/.Main'], timeout=5)
+                self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-n', 'com.whatsapp.w4b/com.whatsapp.Main'], timeout=5)
             elif action_type == "sms":
                 # Intentar abrir la app de mensajería predeterminada
                 self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.APP_MESSAGING'], timeout=5)

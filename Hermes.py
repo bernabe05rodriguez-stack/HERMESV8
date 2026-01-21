@@ -355,6 +355,8 @@ class Hermes:
         self.calls_selected_columns = []
         self.calls_phone_columns_vars = {} # Map col_name -> BooleanVar
 
+        self.traditional_simultaneous_mode = tk.BooleanVar(value=False)
+
         self.excel_file = ""
         self.links = []
         self.link_retry_map = {}
@@ -1377,11 +1379,23 @@ class Hermes:
 
         self.create_setting(self.time_advanced_frame, "Espera Abrir (seg):", self.wait_after_open, None, 0)
 
+        # Checkbox "Modo Simultáneo"
+        self.traditional_simultaneous_switch = ctk.CTkSwitch(
+            self.time_advanced_frame,
+            text="Modo Simultáneo",
+            variable=self.traditional_simultaneous_mode,
+            font=self.fonts['setting_label'],
+            text_color=self.colors['text'],
+            button_color=self.colors['action_mode'],
+            progress_color=self.colors['action_mode']
+        )
+        self.traditional_simultaneous_switch.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 5), padx=(0, 0))
+
         # Pausa programada en una línea
-        ctk.CTkLabel(self.time_advanced_frame, text="Tiempo entre mensaje:", font=self.fonts['setting_label'], fg_color="transparent", text_color=self.colors['text_light']).grid(row=1, column=0, sticky='w', pady=10)
+        ctk.CTkLabel(self.time_advanced_frame, text="Tiempo entre mensaje:", font=self.fonts['setting_label'], fg_color="transparent", text_color=self.colors['text_light']).grid(row=2, column=0, sticky='w', pady=10)
 
         pause_controls = ctk.CTkFrame(self.time_advanced_frame, fg_color="transparent")
-        pause_controls.grid(row=1, column=1, sticky='e', pady=10, padx=(10, 0))
+        pause_controls.grid(row=2, column=1, sticky='e', pady=10, padx=(10, 0))
 
         spinbox_count = self._create_spinbox_widget(pause_controls, self.pause_sends_count, min_val=0, max_val=999)
         spinbox_count.pack(side=tk.LEFT, padx=(0, 4))
@@ -4465,7 +4479,11 @@ class Hermes:
                 else:
                     self.run_sms_thread() # <-- SMS
             else:
-                self.run_default_thread() # <-- WHATSAPP (Tradicional)
+                # <-- WHATSAPP (Tradicional)
+                if self.traditional_simultaneous_mode.get():
+                    self.run_traditional_simultaneous_thread()
+                else:
+                    self.run_default_thread()
             # --- Fin Lógica de envío ---
 
             # Finalización
@@ -4600,17 +4618,18 @@ class Hermes:
             else:
                 target_delay = random.uniform(self.delay_min.get(), self.delay_max.get())
 
-            remaining_delay = max(0, target_delay - send_elapsed)
-            self.log(
-                f"Esperando {remaining_delay:.1f}s (objetivo {target_delay:.1f}s, envío tomó {send_elapsed:.1f}s)"
-                f"... (Post-tarea {task_index})",
-                'info'
-            )
-            elapsed = 0
-            while elapsed < remaining_delay and not self.should_stop:
-                while self.is_paused and not self.should_stop: time.sleep(0.1)
-                if self.should_stop: break
-                time.sleep(0.1); elapsed += 0.1
+            if not skip_delay:
+                remaining_delay = max(0, target_delay - send_elapsed)
+                self.log(
+                    f"Esperando {remaining_delay:.1f}s (objetivo {target_delay:.1f}s, envío tomó {send_elapsed:.1f}s)"
+                    f"... (Post-tarea {task_index})",
+                    'info'
+                )
+                elapsed = 0
+                while elapsed < remaining_delay and not self.should_stop:
+                    while self.is_paused and not self.should_stop: time.sleep(0.1)
+                    if self.should_stop: break
+                    time.sleep(0.1); elapsed += 0.1
         
         return success
 
@@ -4634,6 +4653,89 @@ class Hermes:
             self._run_doble_mode()
         elif mode == "Business/Normal 1/Normal 2":
             self._run_triple_mode()
+
+    def run_traditional_simultaneous_thread(self):
+        """
+        Lógica de envío SIMULTÁNEO para el modo Tradicional (Excel).
+        Ejecuta envíos en 'tandas' paralelas según los dispositivos disponibles
+        y el modo seleccionado (Business, Normal, Business/Normal).
+        """
+        if not self.links:
+            self.log("Error: No hay links para enviar.", 'error')
+            return
+
+        mode = self.traditional_send_mode.get()
+        self.log(f"Modo Tradicional Simultáneo iniciado ({mode})", 'info')
+
+        # Definir fases según el modo
+        phases = []
+        if mode == "Business":
+            phases = [("Business", "com.whatsapp.w4b")]
+        elif mode == "Normal":
+            phases = [("Normal", "com.whatsapp")]
+        elif mode == "Business/Normal":
+            phases = [("Business", "com.whatsapp.w4b"), ("Normal", "com.whatsapp")]
+        else: # Business/Normal 1/Normal 2 u otros fallbacks
+            self.log(f"Advertencia: Modo '{mode}' simplificado a Business/Normal en simultáneo.", 'warning')
+            phases = [("Business", "com.whatsapp.w4b"), ("Normal", "com.whatsapp")]
+
+        total_links = len(self.links)
+        num_devices = len(self.devices)
+        if num_devices == 0:
+            self.log("Error: No hay dispositivos para enviar.", 'error')
+            return
+
+        link_idx = 0
+        phase_idx = 0
+
+        while link_idx < total_links:
+            if self.should_stop: break
+
+            # Determinar fase actual
+            phase_name, phase_pkg = phases[phase_idx % len(phases)]
+            phase_idx += 1
+
+            # Seleccionar lote de links
+            batch_links = self.links[link_idx : link_idx + num_devices]
+            batch_size = len(batch_links)
+
+            # Seleccionar dispositivos (si hay menos links que dispositivos, usar solo los necesarios)
+            active_devices = self.devices[:batch_size]
+
+            self.log(f"\n>>> Iniciando Tanda {phase_name} ({batch_size} envíos) <<<", 'info')
+
+            threads = []
+            for i, device in enumerate(active_devices):
+                link = batch_links[i]
+                # Lanzar hilo individual saltando el delay interno para controlar el delay global de tanda
+                t = threading.Thread(
+                    target=self.run_single_task,
+                    args=(device, link, None, link_idx + i + 1),
+                    kwargs={
+                        'whatsapp_package': phase_pkg,
+                        'link_index': link_idx + i,
+                        'skip_delay': True
+                    }
+                )
+                threads.append(t)
+                t.start()
+
+            # Esperar a que terminen todos los hilos de esta tanda
+            for t in threads:
+                t.join()
+
+            if self.should_stop: break
+
+            link_idx += batch_size
+            self.log(f">>> Tanda {phase_name} finalizada", 'success')
+
+            # Delay entre tandas (si no hemos terminado)
+            if link_idx < total_links:
+                delay = random.uniform(self.delay_min.get(), self.delay_max.get())
+                self.log(f"⏳ Esperando {delay:.1f}s antes de la siguiente tanda...", 'info')
+                self._controlled_sleep(delay)
+
+        self.log(f"\nModo Tradicional Simultáneo finalizado", 'success')
     
     def _run_simple_mode(self, whatsapp_package="com.whatsapp.w4b"):
         """Modo Simple: 1 URL por teléfono, usando el paquete de WhatsApp especificado."""

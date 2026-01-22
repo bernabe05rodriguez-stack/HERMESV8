@@ -391,7 +391,7 @@ class Hermes:
 
         # Estado: "NUMEROS", "GRUPOS", "MIXTO" o None (modo tradicional Excel/CSV)
         self.fidelizado_mode = None
-        self.mixto_variant = tk.IntVar(value=1)  # Variante del modo mixto: 1, 2 o 3
+        self.mixto_variant = SafeIntVar(value=1)  # Variante del modo mixto: 1, 2 o 3
         
         # Índice de inicio aleatorio para rotación de mensajes
         self.mensaje_start_index = 0
@@ -3231,7 +3231,7 @@ class Hermes:
         self.loops_container = ctk.CTkFrame(loops_row, fg_color="transparent")
         self.loops_container.pack(side=tk.LEFT, fill=tk.X, expand=True)
         ctk.CTkLabel(self.loops_container, text="Bucle:", font=self.fonts['button'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
-        self.manual_loops_var = tk.IntVar(value=max(1, self.manual_loops))
+        self.manual_loops_var = SafeIntVar(value=max(1, self.manual_loops))
         self.manual_loops_var.trace_add('write', self.update_per_whatsapp_stat)
         self._create_spinbox_widget(self.loops_container, self.manual_loops_var, min_val=1, max_val=100).pack(side=tk.LEFT)
 
@@ -3997,7 +3997,7 @@ class Hermes:
                     col = 0
                     row += 1
 
-        [v.trace('w', update_buttons) for v in self.column_vars.values()]
+        [v.trace_add('write', update_buttons) for v in self.column_vars.values()]
         update_buttons()
 
         # Barra de botones inferior

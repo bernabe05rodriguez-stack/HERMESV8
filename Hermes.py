@@ -5343,7 +5343,7 @@ class Hermes:
 
                     if number:
                         self.log(f"[{device}] SMS enviado. Esperando 3s antes de llamar...", 'info')
-                        time.sleep(3.0) # Espera fija para que el SMS termine de salir
+                        self._controlled_sleep(3.0) # Espera controlada para respetar pausas
                         
                         if self.should_stop: return False
                         
@@ -8114,33 +8114,9 @@ class Hermes:
                 except:
                     continue
 
-        # --- FALLBACK GEOMÉTRICO (Último recurso) ---
-        # Si no encontramos por nombre, buscamos CUALQUIER botón en la esquina inferior derecha.
-        if is_sms:
-            try:
-                w, h = ui_device.window_size()
-                # Buscar todos los elementos clickeables
-                all_clickables = ui_device(clickable=True)
-                
-                for item in all_clickables:
-                    try:
-                        info = item.info
-                        bounds = info.get('bounds')
-                        if not bounds: continue
-                        
-                        # Centro del elemento
-                        cx = (bounds['left'] + bounds['right']) / 2
-                        cy = (bounds['top'] + bounds['bottom']) / 2
-                        
-                        # Criterio: Estar en el 20% inferior y 20% derecho
-                        if cx > (w * 0.80) and cy > (h * 0.80):
-                            self.log(f"Botón encontrado por GEOMETRÍA (abajo-derecha): {info.get('text') or info.get('contentDescription')}", 'debug')
-                            return item
-                    except:
-                        continue
-            except Exception as e:
-                self.log(f"Error en búsqueda geométrica: {e}", 'debug')
-
+        # --- FALLBACK GEOMÉTRICO (DESACTIVADO PARA SMS) ---
+        # El usuario solicitó explícitamente no hacer clicks en falso ni adivinar posiciones.
+        # Si no se encuentra el botón por selector específico, se asume fallo.
         return None
 
     def _locate_join_group_button(self, ui_device, wait_timeout=0.2):
@@ -8315,57 +8291,50 @@ class Hermes:
                 intento = "Principal" if attempt_idx == 0 else f"Alternativo {attempt_idx}"
                 log_prefix = f"({i}/{total}) → {num_display} [en {device}] ({intento})"
 
-                # --- MODO SMS SIMPLIFICADO ---
+                # --- MODO SMS OPTIMIZADO ---
                 if local_is_sms:
                     # 1. Asegurar pantalla encendida
                     self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=5)
 
-                    # 2. Inyectar URL para abrir el mensaje (Usando comillas dobles para compatibilidad de shell)
+                    # 2. Inyectar URL para abrir el mensaje
                     open_args = ['-s', device, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', f'"{current_link}"']
                     if not self._run_adb_command(open_args, timeout=15):
                         self.log(f"{log_prefix} ✗ Error al abrir la App de SMS.", 'error')
                         return False, False
                     
-                    # 3. Esperar tiempo configurado por el usuario (estático)
+                    # 3. Esperar tiempo de estabilización (configurado por usuario)
                     try:
-                        # Permitir que el usuario baje hasta 0.5s si lo desea
-                        wait_send = max(0.5, float(self.wait_after_first_enter.get()))
+                        wait_send = max(1.0, float(self.wait_after_first_enter.get()))
                     except:
                         wait_send = 2.0
 
-                    self.log(f"Esperando {wait_send}s (estabilización)...", 'info')
-                    time.sleep(wait_send)
+                    self.log(f"Esperando {wait_send}s para cargar App de SMS...", 'info')
+                    self._controlled_sleep(wait_send)
 
                     if self.should_stop: return False, False
 
-                    # 4. Verificar qué aplicación se abrió (Opcional pero útil para debugging)
-                    app_info = ui_device.app_current()
-                    active_package = app_info.get('package', 'desconocido')
-                    self.log(f"App detectada: {active_package}", 'debug')
+                    # 4. Buscar botón ENVIAR (estricto, sin adivinanzas)
+                    self.log(f"Buscando botón 'Enviar'...", 'info')
+                    send_button = self._locate_message_send_button(ui_device, is_sms=True, wait_timeout=3)
 
-                    if self.should_stop: return False, False
+                    if send_button and send_button.exists:
+                        try:
+                            send_button.click()
+                            self.log(f"✓ {log_prefix} :: Botón ENVIAR presionado.", 'success')
 
-                    if self.should_stop: return False, False
+                            # Pequeña espera y verificar si apareció error
+                            self._controlled_sleep(1.5)
+                            if self._detect_send_failure(ui_device):
+                                self.log(f"{log_prefix} ✗ Error reportado por la App tras enviar.", 'error')
+                                return False, True
 
-                    if self.should_stop: return False, False
-
-                    # 4. ESTRATEGIA SOLICITADA: Usar ENTER para enviar
-                    # El usuario solicitó explícitamente "hace que apriete enter".
-                    self.log(f"Enviando vía ENTER (KEYCODE_66)...", 'info')
-                    
-                    try:
-                        # Enviamos ENTER dos veces por seguridad (algunos teclados requieren confirmación o foco)
-                        # KEYCODE_ENTER = 66
-                        cmd_enter = ['-s', device, 'shell', 'input', 'keyevent', '66']
-                        self._run_adb_command(cmd_enter, timeout=5)
-                        time.sleep(0.3)
-                        self._run_adb_command(cmd_enter, timeout=5) # Segundo enter de remate
-                        
-                        self.log(f"✓ {log_prefix} :: SMS Enviado (Enter)", 'success')
-                        time.sleep(1.5)
-                        return True, False
-                    except Exception as e:
-                        self.log(f"Fallo al enviar con Enter: {e}", 'error')
+                            return True, False
+                        except Exception as e:
+                            self.log(f"✗ Error al hacer clic en enviar: {e}", 'error')
+                            return False, False
+                    else:
+                        self.log(f"{log_prefix} ✗ No se encontró el botón de enviar (SMS/RCS).", 'error')
+                        self.log("  └─ Asegúrate de usar Google Messages o Samsung Messages.", 'warning')
                         return False, False
 
                 # --- MODO WHATSAPP (Lógica original) ---

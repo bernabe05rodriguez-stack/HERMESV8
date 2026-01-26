@@ -5,3 +5,4 @@ uiautomator2
 pytesseract
 Pillow
 pywinstyles
+google-generativeai

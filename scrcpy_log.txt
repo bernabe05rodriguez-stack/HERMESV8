@@ -1,0 +1,18 @@
+scrcpy 3.2 <https://github.com/Genymobile/scrcpy>
+INFO: ADB device found:
+INFO:     -->   (usb)  ZT322VJ9V3                      device  moto_g15
+INFO:           (usb)  ZT322VJD46                      device  moto_g15
+INFO:           (usb)  ZT322VJDDG                      device  moto_g15
+INFO:           (usb)  ZT322VJF8T                      device  moto_g15
+INFO:           (usb)  ZT322VJKPN                      device  moto_g15
+INFO:           (usb)  ZT322VJM2G                      device  moto_g15
+INFO:           (usb)  ZY22KQ5TKZ                      device  moto_g04s
+INFO:           (usb)  ZY32LPVZT2                      device  moto_g05
+INFO:           (usb)  ZY32LQ3VDP                      device  moto_g05
+INFO:           (usb)  ZY32LQ3Z2B                      device  moto_g05
+INFO:           (usb)  ZY32LQ3Z4W                      device  moto_g05
+INFO:           (usb)  ZY32LQ3ZZD                      device  moto_g05
+C:\Users\berna\Desktop\HERMES\V8\scrcpy-win64-v3.2\scrcpy-server: 1 file pushed, 0 skipped. 132.5 MB/s (90888 bytes in 0.001s)
+[server] INFO: Device: [motorola] motorola moto g15 (Android 15)
+INFO: Renderer: direct3d
+INFO: Texture: 464x1024

@@ -30,10 +30,15 @@ pyinstaller --noconsole --onefile ^
     --name="Hermes" ^
     --add-data "scrcpy-win64-v3.2;scrcpy-win64-v3.2" ^
     --add-data "*.png;." ^
+    --add-data "ai_assistant.py;." ^
+    --add-data "Grupos.txt;." ^
     --collect-all customtkinter ^
     --collect-all uiautomator2 ^
     --collect-all adbutils ^
+    --collect-all google.generativeai ^
     --hidden-import "PIL._tkinter_finder" ^
+    --hidden-import "google.generativeai" ^
+    --hidden-import "google.ai.generativelanguage" ^
     Hermes.py
 
 if %errorlevel% neq 0 (

@@ -15,7 +15,23 @@ import subprocess
 import time
 import random
 import math
+import ctypes
 import tkinter as tk
+
+# --- Configurar DPI Awareness para Windows (evita bordes pixelados) ---
+try:
+    # Windows 10/11 - Per Monitor DPI Awareness
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        # Windows 8.1
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            # Windows Vista/7/8
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 import customtkinter as ctk
 import tkinter.font as tkfont
 import tkinter.ttk as ttk
@@ -40,6 +56,13 @@ except ImportError:
 from PIL import Image, ImageDraw, ImageFilter
 import re
 import xml.etree.ElementTree as ET
+
+# --- Importar módulo de Asistente de IA ---
+try:
+    from ai_assistant import AIAssistant, GEMINI_AVAILABLE
+except ImportError:
+    AIAssistant = None
+    GEMINI_AVAILABLE = False
 
 
 # --- Clase auxiliar para evitar errores de Tkinter con campos numéricos vacíos ---
@@ -308,10 +331,22 @@ class Hermes:
     def __init__(self, root):
         self.root = root
         self.root.title("HΞЯMΞS V1")
-        self.root.geometry("1500x900")
-        self.root.state('zoomed')
+        
+        # Obtener tamaño de pantalla actual
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        
+        # Establecer tamaño mínimo proporcional a la pantalla
+        min_w = min(1500, int(screen_w * 0.8))
+        min_h = min(900, int(screen_h * 0.8))
+        self.root.minsize(min_w, min_h)
+        
+        # Configurar tamaño inicial
+        self.root.geometry(f"{min_w}x{min_h}")
         self.root.resizable(True, True)
-        self.root.minsize(1500, 900)
+        
+        # Bind para manejar cambios de monitor
+        self.root.bind('<Configure>', self._on_window_configure)
 
         # Variables para la animación de estrellas
         self.stars = []
@@ -493,8 +528,18 @@ class Hermes:
             'dialog_text': ('Inter', 12)
         }
 
+        # --- Asistente de IA ---
+        self.ai_assistant = None
+        self.ai_chat_visible = False
+        self.ai_chat_history = []
+        self.ai_api_key = ""
+        self.ai_bubble_frame = None
+        self.ai_chat_panel = None
+        self.ai_stop_requested = False  # Para pausar/detener la IA
+
         self.auto_detect_adb()
         self.setup_ui()
+        self._init_ai_assistant()  # Inicializar IA después de setup_ui
 
     def _center_toplevel(self, window, width, height):
         """Centrar una ventana toplevel en la pantalla."""
@@ -880,10 +925,28 @@ class Hermes:
         self.main_content_frame.pack_forget()
         self.setup_start_menu() # Recrear o repackear
 
+    def _on_window_configure(self, event):
+        """Maneja cambios en la ventana (redimensionado, cambio de monitor)."""
+        # Solo procesar eventos de la ventana principal
+        if event.widget != self.root:
+            return
+        
+        # Actualizar la burbuja de IA si existe
+        try:
+            if hasattr(self, 'ai_bubble_frame') and self.ai_bubble_frame and self.ai_bubble_frame.winfo_exists():
+                self.ai_bubble_frame.lift()
+            if hasattr(self, 'ai_chat_panel') and self.ai_chat_panel and self.ai_chat_panel.winfo_exists():
+                self.ai_chat_panel.lift()
+        except Exception:
+            pass
+
     def _on_main_configure(self, event):
         # Solo actualizar si la UI principal está visible
-        if hasattr(self, 'main_content_frame') and self.main_content_frame.winfo_ismapped():
-            self._update_main_layout(self.root.winfo_width())
+        try:
+            if hasattr(self, 'main_content_frame') and self.main_content_frame.winfo_exists() and self.main_content_frame.winfo_ismapped():
+                self._update_main_layout(self.root.winfo_width())
+        except Exception:
+            pass  # Ignorar errores si el widget fue destruido
 
     def _update_main_layout(self, width=None):
         """Cambia entre vista de 2 columnas o 1 columna (apilada) si la ventana es muy angosta."""
@@ -1611,22 +1674,23 @@ class Hermes:
 
         self.create_setting(delay_container, "Delay (seg):", self.sms_delay_min, self.sms_delay_max, 0)
 
-        # Configuración avanzada (Oculta por defecto)
-        self.sms_time_advanced_frame = ctk.CTkFrame(sms_time_card, fg_color="transparent")
-        self.sms_time_advanced_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 18))
-        self.create_setting(self.sms_time_advanced_frame, "Esperar a enviar (seg):", self.wait_after_first_enter, None, 0)
-
-        # Checkbox "Enviar en simultáneo" (Ahora en avanzadas)
+        # Checkbox "Enviar en simultáneo" (Movido a principal para visibilidad)
         self.sms_simultaneous_switch = ctk.CTkSwitch(
-            self.sms_time_advanced_frame,
-            text="Enviar en simultáneo",
+            sms_time_main_settings,
+            text="Enviar en simultáneo (Paralelo)",
             variable=self.sms_simultaneous_mode,
             font=self.fonts['setting_label'],
             text_color=self.colors['text'],
             button_color=self.colors['action_mode'],
             progress_color=self.colors['action_mode']
         )
-        self.sms_simultaneous_switch.grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 0), padx=(0, 0))
+        self.sms_simultaneous_switch.pack(side=tk.LEFT, padx=(20, 0), pady=(0, 10))
+
+        # Configuración avanzada (Oculta por defecto)
+        self.sms_time_advanced_frame = ctk.CTkFrame(sms_time_card, fg_color="transparent")
+        self.sms_time_advanced_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 18))
+        self.create_setting(self.sms_time_advanced_frame, "Esperar a enviar (seg):", self.wait_after_first_enter, None, 0)
+
 
         # Checkbox "Realizar llamada" y Duración
         call_frame = ctk.CTkFrame(self.sms_time_advanced_frame, fg_color="transparent")
@@ -2601,20 +2665,56 @@ class Hermes:
 
     def setup_global_shortcuts(self):
         """Configura los atajos de teclado globales."""
-        # Usar bind_all para asegurar que se capturen globalmente
-        # Teclado numérico superior
-        self.root.bind_all("<Control-Key-1>", lambda event: self._shortcut_whatsapp_business())
-        self.root.bind_all("<Control-Key-2>", lambda event: self._shortcut_whatsapp_normal())
-        self.root.bind_all("<Control-Key-3>", lambda event: self._shortcut_sms())
-        self.root.bind_all("<Control-Key-4>", lambda event: self._shortcut_settings())
-        self.root.bind_all("<Control-Key-5>", lambda event: self._shortcut_home())
-
-        # Teclado numérico (Numpad)
-        self.root.bind_all("<Control-KP_1>", lambda event: self._shortcut_whatsapp_business())
-        self.root.bind_all("<Control-KP_2>", lambda event: self._shortcut_whatsapp_normal())
-        self.root.bind_all("<Control-KP_3>", lambda event: self._shortcut_sms())
-        self.root.bind_all("<Control-KP_4>", lambda event: self._shortcut_settings())
-        self.root.bind_all("<Control-KP_5>", lambda event: self._shortcut_home())
+        
+        # Helper que ejecuta la acción y retorna "break" para prevenir propagación
+        def make_shortcut_handler(action_func):
+            def handler(event):
+                action_func()
+                return "break"  # Previene que el evento sea consumido por otros widgets
+            return handler
+        
+        # Definir los shortcuts - Teclado numérico superior
+        shortcut_bindings = [
+            ("<Control-Key-1>", self._shortcut_whatsapp_business),
+            ("<Control-Key-2>", self._shortcut_whatsapp_normal),
+            ("<Control-Key-3>", self._shortcut_sms),
+            ("<Control-Key-4>", self._shortcut_settings),
+            ("<Control-Key-5>", self._shortcut_home),
+            ("<Control-Key-6>", self._shortcut_mirror_mode),
+            ("<Control-Key-7>", self._shortcut_google_contacts),
+            ("<Control-Key-8>", self._shortcut_close_all),
+            # Teclado numérico (Numpad)
+            ("<Control-KP_1>", self._shortcut_whatsapp_business),
+            ("<Control-KP_2>", self._shortcut_whatsapp_normal),
+            ("<Control-KP_3>", self._shortcut_sms),
+            ("<Control-KP_4>", self._shortcut_settings),
+            ("<Control-KP_5>", self._shortcut_home),
+            ("<Control-KP_6>", self._shortcut_mirror_mode),
+            ("<Control-KP_7>", self._shortcut_google_contacts),
+            ("<Control-KP_8>", self._shortcut_close_all),
+            # Atajos para cambiar perfiles de usuario (Ctrl+Alt+1,2,3,4)
+            ("<Control-Alt-Key-1>", self._shortcut_profile_1),
+            ("<Control-Alt-Key-2>", self._shortcut_profile_2),
+            ("<Control-Alt-Key-3>", self._shortcut_profile_3),
+            ("<Control-Alt-Key-4>", self._shortcut_profile_4),
+            ("<Control-Alt-1>", self._shortcut_profile_1),
+            ("<Control-Alt-2>", self._shortcut_profile_2),
+            ("<Control-Alt-3>", self._shortcut_profile_3),
+            ("<Control-Alt-4>", self._shortcut_profile_4),
+            # Numpad para perfiles
+            ("<Control-Alt-KP_1>", self._shortcut_profile_1),
+            ("<Control-Alt-KP_2>", self._shortcut_profile_2),
+            ("<Control-Alt-KP_3>", self._shortcut_profile_3),
+            ("<Control-Alt-KP_4>", self._shortcut_profile_4),
+        ]
+        
+        # Aplicar bindings con bind_all (captura global incluyendo widgets hijos)
+        for key_combo, action in shortcut_bindings:
+            self.root.bind_all(key_combo, make_shortcut_handler(action))
+        
+        # También aplicar directamente al root para mayor robustez
+        for key_combo, action in shortcut_bindings:
+            self.root.bind(key_combo, make_shortcut_handler(action))
 
     def _shortcut_whatsapp_normal(self):
         self._execute_shortcut_action("whatsapp", "WhatsApp Normal")
@@ -2630,6 +2730,605 @@ class Hermes:
 
     def _shortcut_settings(self):
         self._execute_shortcut_action("settings", "Ajustes")
+
+    def _shortcut_google_contacts(self):
+        self._execute_shortcut_action("contacts", "Google Contactos")
+
+    def _shortcut_close_all(self):
+        self._execute_shortcut_action("close_all", "Cerrar Todo")
+
+    def _shortcut_mirror_mode(self):
+        """Activa el modo espejo: abre scrcpy para el teléfono maestro y replica clicks en los demás."""
+        # Siempre refrescar dispositivos para asegurar que el mirroring incluya a todos
+        self.detect_devices(silent=True)
+        
+        if not self.devices:
+            self.log("No hay dispositivos detectados para el modo espejo.", "warning")
+            messagebox.showwarning("Sin Dispositivos", "No hay dispositivos detectados.", parent=self.root)
+            return
+        
+        # Si ya hay un modo espejo activo, detenerlo
+        if hasattr(self, 'mirror_mode_active') and self.mirror_mode_active:
+            self._stop_mirror_mode()
+            return
+        
+        # Si hay más de un dispositivo, preguntar cuál será el maestro
+        if len(self.devices) > 1:
+            self._select_mirror_master_dialog()
+        else:
+            self._start_mirror_mode(self.devices[0])
+
+    # --- Atajos para cambiar perfiles de usuario de Android ---
+    def _shortcut_profile_1(self):
+        """Cambia al perfil 1 (primer usuario) en todos los dispositivos."""
+        self._switch_user_profile(1)
+
+    def _shortcut_profile_2(self):
+        """Cambia al perfil 2 (segundo usuario) en todos los dispositivos."""
+        self._switch_user_profile(2)
+
+    def _shortcut_profile_3(self):
+        """Cambia al perfil 3 (tercer usuario) en todos los dispositivos."""
+        self._switch_user_profile(3)
+
+    def _shortcut_profile_4(self):
+        """Cambia al perfil 4 (cuarto usuario) en todos los dispositivos."""
+        self._switch_user_profile(4)
+
+    def _switch_user_profile(self, profile_number):
+        """
+        Cambia al perfil de usuario especificado en todos los dispositivos.
+        
+        Proceso:
+        1. Despierta el dispositivo
+        2. Baja el panel de configuración rápida (quick settings)
+        3. Toca el icono de usuario (esquina superior izquierda junto al engranaje)
+        4. Espera que aparezca el diálogo de selección de usuario
+        5. Toca el perfil correspondiente por posición
+        """
+        print(f"DEBUG: Shortcut profile {profile_number} triggered")
+        
+        # Verificar dispositivos
+        if not self.devices:
+            self.detect_devices(silent=True)
+        
+        if not self.devices:
+            self.log("No hay dispositivos detectados para cambiar perfil.", "warning")
+            return
+        
+        self.log(f"🔄 Cambiando al Perfil {profile_number} en {len(self.devices)} dispositivo(s)...", "info")
+        
+        def task():
+            threads = []
+            for device in self.devices:
+                t = threading.Thread(target=self._perform_profile_switch_on_device, args=(device, profile_number))
+                threads.append(t)
+                t.start()
+            
+            for t in threads:
+                t.join()
+            
+            self.log(f"✅ Cambio a Perfil {profile_number} completado.", "success")
+        
+        threading.Thread(target=task, daemon=True).start()
+
+    def _perform_profile_switch_on_device(self, device, profile_number):
+        """
+        Realiza el cambio de perfil buscando por NOMBRE.
+        
+        Busca un perfil cuyo nombre sea exactamente "1", "2", "3", "4"
+        o que contenga ese número.
+        """
+        try:
+            adb = self.adb_path.get()
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            
+            # 1. Obtener lista de usuarios
+            result = subprocess.run(
+                [adb, '-s', device, 'shell', 'pm', 'list', 'users'],
+                capture_output=True, text=True, startupinfo=si, timeout=5
+            )
+            
+            if result.returncode != 0:
+                self.log(f"❌ {device}: Error obteniendo usuarios", "error")
+                return
+            
+            # 2. Parsear usuarios
+            users = []
+            for line in result.stdout.strip().split('\n'):
+                if 'UserInfo{' in line:
+                    try:
+                        user_part = line.split('UserInfo{')[1].split('}')[0]
+                        parts = user_part.split(':')
+                        user_id = int(parts[0])
+                        user_name = parts[1] if len(parts) > 1 else f"User{user_id}"
+                        users.append({'id': user_id, 'name': user_name})
+                    except:
+                        continue
+            
+            if not users:
+                self.log(f"❌ {device}: No se encontraron usuarios", "error")
+                return
+            
+            # 3. Buscar perfil por NOMBRE que coincida con el número
+            target = None
+            search_name = str(profile_number)  # "1", "2", "3", "4"
+            
+            # Primero buscar coincidencia exacta
+            for u in users:
+                if u['name'] == search_name:
+                    target = u
+                    break
+            
+            # Si no hay coincidencia exacta, buscar que contenga el número
+            if not target:
+                for u in users:
+                    if search_name in u['name']:
+                        target = u
+                        break
+            
+            if not target:
+                self.log(f"❌ {device}: No se encontró perfil '{search_name}'", "warning")
+                return
+            
+            # 4. Cambiar usuario
+            self.log(f"📱 {device}: → {target['name']}", "info")
+            
+            switch_result = subprocess.run(
+                [adb, '-s', device, 'shell', 'am', 'switch-user', str(target['id'])],
+                capture_output=True, text=True, startupinfo=si, timeout=10
+            )
+            
+            if switch_result.returncode == 0 and 'Error' not in switch_result.stdout:
+                self.log(f"✓ {device}: {target['name']}", "success")
+            else:
+                self.log(f"❌ {device}: Falló", "error")
+            
+        except subprocess.TimeoutExpired:
+            self.log(f"❌ {device}: Timeout", "error")
+        except Exception as e:
+            self.log(f"❌ {device}: {e}", "error")
+
+
+    def _select_mirror_master_dialog(self):
+        """Muestra un diálogo para elegir el dispositivo que será el espejo maestro."""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Seleccionar Dispositivo Maestro")
+        dialog.geometry("400x350")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        self._center_toplevel(dialog, 400, 350)
+        
+        ctk.CTkLabel(dialog, text="Elige el dispositivo que deseas ver\n(Los clicks se replicarán en TODOS)", font=('Inter', 14, 'bold')).pack(pady=20)
+        
+        frame = ctk.CTkScrollableFrame(dialog, height=200)
+        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        for dev in self.devices:
+            btn = ctk.CTkButton(
+                frame, text=f"📱 {dev}", 
+                command=lambda d=dev: [dialog.destroy(), self._start_mirror_mode(d)]
+            )
+            btn.pack(fill=tk.X, pady=5)
+            
+        ctk.CTkButton(dialog, text="Cancelar", command=dialog.destroy, fg_color="transparent", border_width=1).pack(pady=10)
+
+    def _start_mirror_mode(self, primary_device):
+        """
+        Inicia el modo espejo con ventana de control propia.
+        """
+        self.mirror_mode_active = True
+        
+        all_devices = self.devices.copy()
+        # Asegurar que el maestro esté en la lista (siempre debería estar)
+        if primary_device not in all_devices:
+            all_devices.insert(0, primary_device)
+        
+        self.log(f"🪞 MODO ESPEJO ACTIVADO", "success")
+        self.log(f"   Maestro: {primary_device}", "info")
+        self.log(f"   Controlando {len(all_devices)} dispositivo(s)", "info")
+        
+        # 1. Obtener resolución del dispositivo principal
+        screen_width = 1080
+        screen_height = 2400
+        try:
+            result = subprocess.run(
+                [self.adb_path.get(), '-s', primary_device, 'shell', 'wm', 'size'],
+                capture_output=True, text=True, timeout=5
+            )
+            if 'Physical size:' in result.stdout:
+                size_str = result.stdout.split('Physical size:')[1].strip().split('\n')[0]
+                w, h = size_str.split('x')
+                screen_width = int(w.strip())
+                screen_height = int(h.strip())
+            elif 'Override size:' in result.stdout:
+                size_str = result.stdout.split('Override size:')[1].strip().split('\n')[0]
+                w, h = size_str.split('x')
+                screen_width = int(w.strip())
+                screen_width = int(w.strip())
+                screen_height = int(h.strip())
+            
+            self.log(f"Resolución detectada para {primary_device}: {screen_width}x{screen_height}", "info")
+        except Exception as e:
+            self.log(f"Usando resolución por defecto: {screen_width}x{screen_height}", "warning")
+        
+        self.log(f"   Resolución del dispositivo: {screen_width}x{screen_height}", "info")
+        
+        try:
+            # 1. Dimensiones y Posicionamiento CENTRAL
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            
+            # Altura deseada: 70% de la pantalla
+            h_espejo = int(screen_h * 0.7)
+            # Ancho proporcional (9:20 aprox)
+            w_espejo = int(h_espejo * (9 / 20))
+            
+            # Limitar si es muy ancho
+            if w_espejo > screen_w * 0.4:
+                w_espejo = int(screen_w * 0.35)
+                h_espejo = int(w_espejo * (20 / 9))
+
+            x_pos = (screen_w // 2) - (w_espejo // 2)
+            y_pos = (screen_h // 2) - (h_espejo // 2) - 30
+
+            # 2. Despertar dispositivo (ADB Directo)
+            adb_exe = self.adb_path.get()
+            subprocess.run([adb_exe, '-s', primary_device, 'shell', 'input', 'keyevent', '224'], capture_output=True)
+            subprocess.run([adb_exe, '-s', primary_device, 'shell', 'wm', 'dismiss-keyguard'], capture_output=True)
+            
+            # 3. Lanzar scrcpy con flags de máxima compatibilidad
+            scrcpy_exe = os.path.join(BASE_DIR, "scrcpy-win64-v3.2", "scrcpy.exe")
+            
+            env = os.environ.copy()
+            if adb_exe and os.path.exists(adb_exe):
+                env["ADB"] = adb_exe
+                env["PATH"] = os.path.dirname(adb_exe) + os.pathsep + env.get("PATH", "")
+
+            scrcpy_cmd = [
+                scrcpy_exe, 
+                '-s', primary_device,
+                '--window-title', 'ESPEJO_MAESTRO',
+                '--window-x', str(x_pos),
+                '--window-y', str(y_pos),
+                '--window-width', str(w_espejo),
+                '--window-height', str(h_espejo),
+                '--always-on-top',
+                '--no-control',
+                '--no-audio',
+                '--max-size', '1024',
+                '--video-codec', 'h264',
+                '--video-bit-rate', '4M'
+            ]
+            
+            # Loguear comando exacto
+            self.log(f"Ejecutando: {' '.join(scrcpy_cmd)}", "debug")
+            
+            # Redirigir salida a un archivo para debug
+            log_file = os.path.join(BASE_DIR, "scrcpy_log.txt")
+            self.scrcpy_log_fp = open(log_file, "w")
+
+            self.scrcpy_process = subprocess.Popen(
+                scrcpy_cmd, env=env, cwd=os.path.dirname(scrcpy_exe),
+                stdout=self.scrcpy_log_fp, stderr=subprocess.STDOUT
+            )
+
+            # Verificar si falla inmediatamente
+            try:
+                self.scrcpy_process.wait(timeout=1)
+                # Si no lanza TimeoutExpired, es que terminó (falló?)
+                if self.scrcpy_process.returncode is not None and self.scrcpy_process.returncode != 0:
+                    self.log(f"Scrcpy falló al iniciar (código {self.scrcpy_process.returncode}). Ver scrcpy_log.txt", "error")
+                    messagebox.showerror("Error Scrcpy", f"Falló al iniciar el espejo.\nRevisa {log_file}")
+                    return
+            except subprocess.TimeoutExpired:
+                # Sigue corriendo, todo bien
+                pass
+            
+            # 4. Crear capa de control tras 4.5 segundos
+            self.root.after(4500, lambda: self._create_mirror_control_window(w_espejo, h_espejo, x_pos, y_pos))
+            
+            self.mirror_screen_width = screen_width
+            self.mirror_screen_height = screen_height
+            self.mirror_devices = all_devices
+
+        except Exception as e:
+            self.log(f"Error en espejo: {e}", "error")
+            self.mirror_mode_active = False
+            return
+        
+        self.log("🪞 Modo Espejo preparado. El teléfono se despertará solo.", "success")
+    
+    def _create_mirror_control_window(self, width, height, x, y):
+        """Crea la ventana de control invisible sobre scrcpy."""
+        # Limpiar si ya existe
+        if hasattr(self, 'mirror_window') and self.mirror_window:
+            try: self.mirror_window.destroy()
+            except: pass
+        if hasattr(self, 'mirror_nav_window') and self.mirror_nav_window:
+            try: self.mirror_nav_window.destroy()
+            except: pass
+
+        # 1. Overlay de control
+        self.mirror_window = tk.Toplevel(self.root)
+        self.mirror_window.title("HERMES_OVERLAY")
+        self.mirror_window.overrideredirect(True)
+        # Offset de 32 para la barra de título de scrcpy normal
+        self.mirror_window.geometry(f"{width}x{height}+{x}+{y+32}")
+        self.mirror_window.attributes('-topmost', True)
+        self.mirror_window.attributes("-alpha", 0.1) # 10% visible para que el usuario vea la zona táctil
+        
+        self.mirror_canvas = tk.Canvas(self.mirror_window, width=width, height=height, bg='black', highlightthickness=1, highlightbackground='#00ff88')
+        self.mirror_canvas.pack(fill=tk.BOTH, expand=True)
+
+        # 2. Ventana de Navegación
+        self.mirror_nav_window = ctk.CTkToplevel(self.root)
+        self.mirror_nav_window.title("Navegación Espejo")
+        self.mirror_nav_window.overrideredirect(True)
+        # Justo debajo del canvas
+        nav_y = y + height + 40
+        self.mirror_nav_window.geometry(f"{width}x70+{x}+{nav_y}")
+        self.mirror_nav_window.attributes('-topmost', True)
+
+        self.mirror_nav_frame = ctk.CTkFrame(self.mirror_nav_window, corner_radius=15, fg_color='#1a1a2e', border_width=1, border_color='#00ff88')
+        self.mirror_nav_frame.pack(fill=tk.BOTH, expand=True)
+        
+        btn_s = {"width": width // 4 - 8, "height": 35, "font": ('Inter', 11, 'bold')}
+        
+        ctk.CTkButton(self.mirror_nav_frame, text="◀ BACK", command=lambda: self._mirror_send_key('KEYCODE_BACK'), **btn_s, fg_color="#3a3a5e").pack(side=tk.LEFT, padx=3, pady=15)
+        ctk.CTkButton(self.mirror_nav_frame, text="● HOME", command=lambda: self._mirror_send_key('KEYCODE_HOME'), **btn_s, fg_color="#3a3a5e").pack(side=tk.LEFT, padx=3, pady=15)
+        ctk.CTkButton(self.mirror_nav_frame, text="■ APPS", command=lambda: self._mirror_send_key('KEYCODE_APP_SWITCH'), **btn_s, fg_color="#3a3a5e").pack(side=tk.LEFT, padx=3, pady=15)
+        ctk.CTkButton(self.mirror_nav_frame, text="⌨ TEXT", command=self._mirror_send_text_dialog, **btn_s, fg_color="#0066cc").pack(side=tk.LEFT, padx=3, pady=15)
+        
+        # Inicializar variables de estado
+        self.mirror_swipe_line_id = None
+        self.mirror_swipe_start = None
+        self.mirror_last_click_id = None
+
+        # Eventos
+        self.mirror_canvas.bind('<Button-1>', self._on_mirror_click_start)
+        self.mirror_canvas.bind('<B1-Motion>', self._on_mirror_drag)
+        self.mirror_canvas.bind('<ButtonRelease-1>', self._on_mirror_click_end)
+        
+        self.mirror_window.protocol("WM_DELETE_WINDOW", self._stop_mirror_mode)
+        self.mirror_nav_window.protocol("WM_DELETE_WINDOW", self._stop_mirror_mode)
+        self.mirror_window.bind('<Escape>', lambda e: self._stop_mirror_mode())
+        
+        self.log("🪞 Control Centrado Activado.", "success")
+    
+    def _on_mirror_click_start(self, event):
+        """Maneja el inicio de un click/swipe en la ventana de control."""
+        # Guardar posición inicial para detectar si es tap o swipe
+        self.mirror_swipe_start = (event.x, event.y)
+        
+        # Limpiar línea de swipe anterior si existe
+        if self.mirror_swipe_line_id:
+            try:
+                self.mirror_canvas.delete(self.mirror_swipe_line_id)
+            except:
+                pass
+            self.mirror_swipe_line_id = None
+    
+    def _on_mirror_drag(self, event):
+        """Maneja arrastre (swipe) en la ventana de control - muestra feedback visual."""
+        if not self.mirror_swipe_start:
+            return
+        
+        start_x, start_y = self.mirror_swipe_start
+        
+        # Solo mostrar línea si hay movimiento significativo
+        distance = ((event.x - start_x) ** 2 + (event.y - start_y) ** 2) ** 0.5
+        if distance > 20:  # Umbral mínimo para considerar swipe
+            # Limpiar línea anterior
+            if self.mirror_swipe_line_id:
+                try:
+                    self.mirror_canvas.delete(self.mirror_swipe_line_id)
+                except:
+                    pass
+            
+            # Dibujar línea de swipe
+            self.mirror_swipe_line_id = self.mirror_canvas.create_line(
+                start_x, start_y, event.x, event.y,
+                fill='#ff8800', width=3, arrow=tk.LAST
+            )
+    
+    def _on_mirror_click_end(self, event):
+        """Maneja el final de un click/swipe - determina si es tap o swipe."""
+        if not self.mirror_swipe_start:
+            return
+        
+        start_x, start_y = self.mirror_swipe_start
+        end_x, end_y = event.x, event.y
+        
+        # Calcular distancia recorrida
+        distance = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
+        
+        # Limpiar línea de swipe
+        if self.mirror_swipe_line_id:
+            try:
+                self.mirror_canvas.delete(self.mirror_swipe_line_id)
+            except:
+                pass
+            self.mirror_swipe_line_id = None
+        
+        canvas_width = self.mirror_canvas.winfo_width()
+        canvas_height = self.mirror_canvas.winfo_height()
+        
+        if distance < 20:
+            # Es un TAP (click simple)
+            device_x = int((end_x / canvas_width) * self.mirror_screen_width)
+            device_y = int((end_y / canvas_height) * self.mirror_screen_height)
+            
+            # Mostrar feedback visual
+            if self.mirror_last_click_id:
+                self.mirror_canvas.delete(self.mirror_last_click_id)
+            
+            r = 15
+            self.mirror_last_click_id = self.mirror_canvas.create_oval(
+                end_x - r, end_y - r, end_x + r, end_y + r,
+                fill='#00ff88', outline='#00ff88'
+            )
+            self.mirror_window.after(300, lambda: self._fade_click_indicator())
+            
+            # Enviar tap a todos los dispositivos
+            self.log(f"👆 Tap detectado en ({device_x}, {device_y})", "debug")
+            self._send_tap_to_all_devices(device_x, device_y)
+        else:
+            # Es un SWIPE (arrastre)
+            device_start_x = int((start_x / canvas_width) * self.mirror_screen_width)
+            device_start_y = int((start_y / canvas_height) * self.mirror_screen_height)
+            device_end_x = int((end_x / canvas_width) * self.mirror_screen_width)
+            device_end_y = int((end_y / canvas_height) * self.mirror_screen_height)
+            
+            # Mostrar feedback visual del swipe
+            swipe_indicator = self.mirror_canvas.create_line(
+                start_x, start_y, end_x, end_y,
+                fill='#00ff88', width=4, arrow=tk.LAST
+            )
+            self.mirror_window.after(400, lambda: self._fade_swipe_indicator(swipe_indicator))
+            
+            # Enviar swipe a todos los dispositivos
+            self.log(f"👆 Swipe detectado: ({device_start_x},{device_start_y}) -> ({device_end_x},{device_end_y})", "debug")
+            self._send_swipe_to_all_devices(device_start_x, device_start_y, device_end_x, device_end_y)
+        
+        # Limpiar estado
+        self.mirror_swipe_start = None
+    
+    def _fade_click_indicator(self):
+        """Desvanece el indicador de click."""
+        if self.mirror_last_click_id and hasattr(self, 'mirror_canvas'):
+            try:
+                self.mirror_canvas.delete(self.mirror_last_click_id)
+                self.mirror_last_click_id = None
+            except:
+                pass
+
+    def _fade_swipe_indicator(self, indicator_id):
+        """Desvanece el indicador de swipe."""
+        if hasattr(self, 'mirror_canvas'):
+            try:
+                self.mirror_canvas.delete(indicator_id)
+            except:
+                pass
+    
+    def _send_tap_to_all_devices(self, x, y):
+        """Envía un tap a todos los dispositivos en paralelo."""
+        def send_tap(device):
+            try:
+                res = self._run_adb_command(['-s', device, 'shell', 'input', 'tap', str(x), str(y)], timeout=3)
+                if not res:
+                     self.log(f"❌ Fallo tap en {device}", "error")
+                else:
+                     self.log(f"✅ Tap enviado a {device}", "debug")
+            except Exception as e:
+                self.log(f"❌ Excepción tap en {device}: {e}", "error")
+        
+        # Enviar en paralelo
+        if self.mirror_devices:
+            self.log(f"Transmitiendo tap a {len(self.mirror_devices)} dispositivo(s)...", "info")
+            
+        threads = []
+        for device in self.mirror_devices:
+            t = threading.Thread(target=send_tap, args=(device,), daemon=True)
+            threads.append(t)
+            t.start()
+
+    def _send_swipe_to_all_devices(self, x1, y1, x2, y2, duration=300):
+        """Envía un swipe a todos los dispositivos en paralelo."""
+        def send_swipe(device):
+            try:
+                # Comand: input swipe <x1> <y1> <x2> <y2> [duration]
+                res = self._run_adb_command(
+                    ['-s', device, 'shell', 'input', 'swipe', str(x1), str(y1), str(x2), str(y2), str(duration)],
+                    timeout=5
+                )
+                if not res:
+                    self.log(f"❌ Fallo swipe en {device}", "error")
+                else:
+                    self.log(f"✅ Swipe enviado a {device}", "debug")
+            except Exception as e:
+                self.log(f"❌ Excepción swipe en {device}: {e}", "error")
+        
+        # Enviar en paralelo
+        if self.mirror_devices:
+            self.log(f"Transmitiendo swipe a {len(self.mirror_devices)} dispositivo(s)...", "info")
+
+        for device in self.mirror_devices:
+            threading.Thread(target=send_swipe, args=(device,), daemon=True).start()
+    
+    def _mirror_send_key(self, keycode):
+        """Envía una tecla a todos los dispositivos."""
+        def send_key(device):
+            try:
+                self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', keycode], timeout=3)
+            except:
+                pass
+        
+        for device in self.mirror_devices:
+            threading.Thread(target=send_key, args=(device,), daemon=True).start()
+        
+        self.log(f"Tecla {keycode} enviada a todos", "info")
+
+    def _mirror_send_text_dialog(self):
+        """Muestra un diálogo para enviar texto a todos los dispositivos."""
+        dialog = ctk.CTkInputDialog(text="Ingresa el texto a enviar a todos los dispositivos:", title="Enviar Texto (Espejo)")
+        text = dialog.get_input()
+        if text:
+            self._mirror_send_text_to_all(text)
+
+    def _mirror_send_text_to_all(self, text):
+        """Envía texto a todos los dispositivos."""
+        def send_text(device, t):
+            try:
+                # El comando input text no maneja bien espacios a menos que se escapen o usen %s
+                # Dependiendo de la versión de Android, quoting puede funcionar o no.
+                # Intentamos con %s para espacios que es lo más compatible
+                escaped_text = t.replace(' ', '%s')
+                self._run_adb_command(['-s', device, 'shell', 'input', 'text', escaped_text], timeout=5)
+            except Exception as e:
+                print(f"Error enviando texto a {device}: {e}")
+        
+        for device in self.mirror_devices:
+            threading.Thread(target=send_text, args=(device, text), daemon=True).start()
+        
+        self.log(f"Texto enviado a {len(self.mirror_devices)} dispositivos", "success")
+    
+    def _stop_mirror_mode(self):
+        """Detiene el modo espejo."""
+        self.log("🛑 Deteniendo modo espejo...", "info")
+        
+        # Cerrar ventana de control
+        if hasattr(self, 'mirror_window') and self.mirror_window:
+            try:
+                self.mirror_window.destroy()
+            except:
+                pass
+            self.mirror_window = None
+        
+        # Cerrar ventana de navegación
+        if hasattr(self, 'mirror_nav_window') and self.mirror_nav_window:
+            try:
+                self.mirror_nav_window.destroy()
+            except:
+                pass
+            self.mirror_nav_window = None
+        
+        # Cerrar scrcpy
+        if hasattr(self, 'scrcpy_process') and self.scrcpy_process:
+            try:
+                self.scrcpy_process.terminate()
+                self.scrcpy_process.wait(timeout=3)
+            except:
+                try:
+                    self.scrcpy_process.kill()
+                except:
+                    pass
+            self.scrcpy_process = None
+        
+        self.mirror_mode_active = False
+        self.log("Modo espejo detenido.", "success")
 
     def _execute_shortcut_action(self, action_type, action_name):
         """Ejecuta una acción de atajo en todos los dispositivos conectados."""
@@ -2674,6 +3373,10 @@ class Hermes:
                 self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_HOME'], timeout=5)
             elif action_type == "settings":
                 self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-a', 'android.settings.SETTINGS'], timeout=5)
+            elif action_type == "contacts":
+                self._run_adb_command(['-s', device, 'shell', 'am', 'start', '-n', 'com.google.android.contacts/com.android.contacts.activities.PeopleActivity'], timeout=5)
+            elif action_type == "close_all":
+                self.close_all_apps(device)
         except Exception as e:
             # Usar print para no saturar el log principal desde hilos si falla
             print(f"Error shortcut {action_type} {device}: {e}")
@@ -3271,6 +3974,18 @@ class Hermes:
         )
         self.simultaneous_switch.pack(anchor='w')
 
+        # --- Controles de Envío Simultáneo (Uno a Muchos) ---
+        self.uno_a_muchos_simultaneous_container = ctk.CTkFrame(config_grid, fg_color="transparent")
+        # Se mostrará condicionalmente en _update_fidelizado_ui_mode cuando sea modo NUMEROS + Uno a muchos
+        self.uno_a_muchos_simultaneous_switch = ctk.CTkSwitch(
+            self.uno_a_muchos_simultaneous_container,
+            text="🚀 Envío Simultáneo (Todos a un número)",
+            variable=self.simultaneous_mode,
+            font=self.fonts['button'],
+            text_color=self.colors['text']
+        )
+        self.uno_a_muchos_simultaneous_switch.pack(anchor='w')
+
         # --- STEP 3: CARGA ---
         step3_frame = ctk.CTkFrame(content, fg_color="transparent")
         step3_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
@@ -3435,6 +4150,15 @@ class Hermes:
                 self.simultaneous_mode_container.pack(fill=tk.X, pady=(0, 10))
         else:
             self.simultaneous_mode_container.pack_forget()
+
+        # --- Configuración Simultáneo (Uno a Muchos en NUMEROS) ---
+        if self.fidelizado_mode == "NUMEROS" and numeros_submode == "Uno a muchos":
+            if hasattr(self, 'uno_a_muchos_simultaneous_container'):
+                if not self.uno_a_muchos_simultaneous_container.winfo_manager():
+                    self.uno_a_muchos_simultaneous_container.pack(fill=tk.X, pady=(0, 10))
+        else:
+            if hasattr(self, 'uno_a_muchos_simultaneous_container'):
+                self.uno_a_muchos_simultaneous_container.pack_forget()
 
         # --- 3. Visibilidad de Botones de Acción ---
         if self.fidelizado_mode == "GRUPOS":
@@ -4153,7 +4877,7 @@ class Hermes:
         
         # --- Validación de Tareas ---
         # Modos que NO requieren self.links (se procesan directamente en el hilo)
-        modos_sin_links = ["NUMEROS", "GRUPOS", "MIXTO"]
+        modos_sin_links = ["NUMEROS", "NUMEROS_MANUAL", "GRUPOS", "MIXTO"]
         
         if not self.links and self.fidelizado_mode not in modos_sin_links:
             messagebox.showerror("Error", "Paso 2 o Fidelizado: Carga datos o genera enlaces.", parent=self.root)
@@ -4175,6 +4899,24 @@ class Hermes:
             self.total_messages = self.manual_loops * num_numeros * num_dev * whatsapp_multiplier
             wa_mode_str = self.whatsapp_mode.get()
             self.log(f"Modo Números ({wa_mode_str}): {self.total_messages} envíos totales ({self.manual_loops} ciclos x {num_numeros} números x {num_dev} disp. x {whatsapp_multiplier} app(s))", 'info')
+        
+        elif self.fidelizado_mode == "NUMEROS_MANUAL":
+            if not self.manual_inputs_numbers:
+                messagebox.showerror("Error", "Modo Números Manual requiere números cargados.", parent=self.root); return
+            if not self.manual_messages_numbers:
+                messagebox.showerror("Error", "Modo Números Manual requiere mensajes cargados.", parent=self.root); return
+
+            # Calcular total_messages para Modo Números Manual
+            num_dev = len(self._get_filtered_devices(silent=True))
+            if num_dev == 0:
+                messagebox.showerror("Error", "No hay dispositivos compatibles con el filtro de WhatsApp seleccionado.", parent=self.root); return
+            num_numeros = len(self.manual_inputs_numbers)
+            num_bucles = self.manual_loops_var.get()
+            whatsapp_multiplier = 3 if self.whatsapp_mode.get() == "Todas" else (2 if self.whatsapp_mode.get() == "Ambas" else 1)
+            self.total_messages = num_bucles * num_numeros * num_dev * whatsapp_multiplier
+            wa_mode_str = self.whatsapp_mode.get()
+            self.log(f"Modo Números Manual ({wa_mode_str}): {self.total_messages} envíos totales ({num_bucles} bucles x {num_numeros} números x {num_dev} disp. x {whatsapp_multiplier} app(s))", 'info')
+
         
         elif self.fidelizado_mode == "GRUPOS":
             if not self.manual_inputs_groups:
@@ -4445,10 +5187,17 @@ class Hermes:
         try:
             self.log("INICIANDO ENVÍO", 'success')
 
-            # Limpieza inicial
+            # Limpieza inicial en paralelo para ahorrar tiempo
+            self.log("Preparando dispositivos (limpieza)...", 'info')
+            cleanup_threads = []
             for dev in self.devices:
                 if self.should_stop: break
-                self.close_all_apps(dev)
+                t = threading.Thread(target=self.close_all_apps, args=(dev,), daemon=True)
+                cleanup_threads.append(t)
+                t.start()
+            
+            for t in cleanup_threads:
+                t.join(timeout=10)
 
             if self.should_stop: self.log("Cancelado", 'warning'); return
             self.log("Pausa inicial de 3s...", 'info'); time.sleep(3)
@@ -4464,12 +5213,18 @@ class Hermes:
                 else:
                     self.run_grupos_dual_whatsapp_thread() # <-- WHATSAPP
             elif self.fidelizado_mode == "NUMEROS_MANUAL":
-                self.run_numeros_manual_thread() # <-- WHATSAPP
+                if self.simultaneous_mode.get():
+                    self.run_numeros_manual_simultaneous_thread() # <-- SIMULTÁNEO
+                else:
+                    self.run_numeros_manual_thread() # <-- WHATSAPP
             elif self.fidelizado_mode == "NUMEROS":
                 if self.fidelizado_numeros_mode.get() == "Uno a uno":
                     self.run_uno_a_uno_thread() # <-- WHATSAPP
                 else: # Uno a muchos
-                    self.run_uno_a_muchos_thread() # <-- WHATSAPP
+                    if self.simultaneous_mode.get():
+                        self.run_uno_a_muchos_simultaneous_thread() # <-- SIMULTÁNEO
+                    else:
+                        self.run_uno_a_muchos_thread() # <-- WHATSAPP
             elif self.fidelizado_mode == "MIXTO":
                 self.run_mixto_dual_whatsapp_thread() # <-- WHATSAPP
             elif self.sms_mode_active:
@@ -4580,7 +5335,6 @@ class Hermes:
             if self.sms_mode_active and self.sms_enable_call.get():
                 try:
                     # Extraer número de sms:NUMBER?body=...
-                    # target_link viene como "sms:12345?body=..."
                     number_part = link.split(':')[1]
                     if '?' in number_part:
                         number = number_part.split('?')[0]
@@ -4588,8 +5342,11 @@ class Hermes:
                         number = number_part
 
                     if number:
-                        self.log(f"[{device}] Esperando 3s antes de llamada...", 'info')
-                        self._controlled_sleep(3)
+                        self.log(f"[{device}] SMS enviado. Esperando 3s antes de llamar...", 'info')
+                        time.sleep(3.0) # Espera fija para que el SMS termine de salir
+                        
+                        if self.should_stop: return False
+                        
                         self.log(f"[{device}] Iniciando llamada a {number}...", 'info')
                         self._perform_call(device, number, self.sms_call_duration.get())
                 except Exception as e:
@@ -5230,10 +5987,9 @@ class Hermes:
             self.log("Error: No hay enlaces SMS para enviar.", 'error')
             return
 
-        self.log("Ejecutando SMS en modo SIMULTÁNEO...", 'info')
-
         num_devices = len(self.devices)
         total_links = len(self.links)
+        self.log(f"Ejecutando SMS en modo SIMULTÁNEO ({num_devices} dispositivos)...", 'info')
 
         # Process in batches
         for i in range(0, total_links, num_devices):
@@ -5248,7 +6004,7 @@ class Hermes:
             batch_links = self.links[i : i + num_devices]
             threads = []
 
-            self.log(f"--- Iniciando lote simultáneo ({len(batch_links)} envíos) ---", 'info')
+            self.log(f"--- [BATCH SIMULTÁNEO] Iniciando {len(batch_links)} envíos en paralelo ---", 'success')
 
             for j, link in enumerate(batch_links):
                 # Ensure we have enough devices (cycle if fewer devices than batch size - unlikely here as batch size is len(devices))
@@ -5313,6 +6069,114 @@ class Hermes:
                     link = f"https://wa.me/549{numero}?text={urllib.parse.quote(mensaje, safe='')}"
 
                     self.run_single_task(device, link, None, task_counter, whatsapp_package=wa_package)
+
+    def run_numeros_manual_simultaneous_thread(self):
+        """
+        Lógica de envío SIMULTÁNEO para MODO NÚMEROS - MANUAL.
+        Para cada número destino:
+          1. Todos los Business envían a ese número SIMULTÁNEAMENTE
+          2. Todos los Normal envían a ese número SIMULTÁNEAMENTE
+        Luego se pasa al siguiente número.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        self.log("Iniciando MODO NÚMEROS MANUAL - SIMULTÁNEO...", 'info')
+
+        active_devices = self._get_filtered_devices()
+        if not active_devices:
+            self.log("No hay dispositivos que cumplan con el filtro.", "error")
+            return
+
+        num_devices = len(active_devices)
+        num_bucles = self.manual_loops_var.get()
+        total_numeros = len(self.manual_inputs_numbers)
+        
+        self.log(f"Dispositivos: {num_devices}, Números: {total_numeros}", 'info')
+
+        task_counter = [0]
+        mensaje_index = [self.mensaje_start_index]
+        total_mensajes_lib = len(self.manual_messages_numbers)
+        whatsapp_apps = self._get_whatsapp_apps_to_use()
+
+        def execute_send(device, wa_package, numero, task_idx):
+            """Ejecuta un envío SIMPLIFICADO en un thread del pool."""
+            mensaje = self.manual_messages_numbers[mensaje_index[0] % total_mensajes_lib]
+            mensaje_index[0] += 1
+            link = f"https://wa.me/549{numero}?text={urllib.parse.quote(mensaje, safe='')}"
+            
+            # Usar la función simplificada: solo abre el link y hace clic en enviar
+            success = self._send_simple_whatsapp(device, link, wa_package)
+            
+            # Actualizar contadores
+            if success:
+                self.sent_count += 1
+            else:
+                self.failed_count += 1
+            self.current_index = task_idx
+            self.root.after(0, self.update_stats)
+            
+            return success
+
+        for bucle_num in range(num_bucles):
+            if self.should_stop: break
+            self.log(f"\n--- BUCLE {bucle_num + 1}/{num_bucles} (SIMULTÁNEO) ---", 'success')
+
+            for num_idx, numero in enumerate(self.manual_inputs_numbers):
+                while self.is_paused and not self.should_stop:
+                    time.sleep(0.1)
+                
+                if self.should_stop: break
+                
+                self.log(f"\n>>> Número {num_idx + 1}/{total_numeros}: {numero} <<<", 'info')
+
+                # Para cada tipo de WhatsApp (primero Business, luego Normal según config)
+                for wa_name, wa_package in whatsapp_apps:
+                    if self.should_stop: break
+                    
+                    self.log(f"[{wa_name}] Enviando desde {num_devices} dispositivos SIMULTÁNEAMENTE...", 'info')
+                    
+                    # Usar ThreadPoolExecutor para enviar desde TODOS los dispositivos a la vez
+                    with ThreadPoolExecutor(max_workers=num_devices) as executor:
+                        futures = []
+                        for device in active_devices:
+                            task_counter[0] += 1
+                            future = executor.submit(
+                                execute_send,
+                                device,
+                                wa_package,
+                                numero,
+                                task_counter[0]
+                            )
+                            futures.append(future)
+                        
+                        # Esperar a que todos terminen
+                        for future in as_completed(futures):
+                            try:
+                                future.result()
+                            except Exception as e:
+                                self.log(f"Error en thread: {e}", 'error')
+                    
+                    if self.should_stop: break
+                    self.log(f"[{wa_name}] Lote completado", 'success')
+                    
+                    # Delay entre tipos de WhatsApp (Business -> Normal)
+                    if wa_package != whatsapp_apps[-1][1]:  # Si no es el último tipo
+                        delay = random.uniform(2, 4)
+                        self.log(f"⏳ Esperando {delay:.1f}s...", 'info')
+                        self._controlled_sleep(delay)
+                
+                if self.should_stop: break
+                
+                # Delay entre números
+                if num_idx < total_numeros - 1:
+                    delay = random.uniform(self.fidelizado_send_delay_min.get(), self.fidelizado_send_delay_max.get())
+                    self.log(f"⏳ Esperando {delay:.1f}s antes del siguiente número...", 'info')
+                    self._controlled_sleep(delay)
+            
+            if self.should_stop: break
+            self.log(f"\n--- FIN BUCLE {bucle_num + 1}/{num_bucles} ---", 'success')
+
+        self.log(f"\nModo Números Manual SIMULTÁNEO finalizado", 'success')
     
     def _get_filtered_devices(self, silent=False):
         """
@@ -5718,6 +6582,315 @@ class Hermes:
                     whatsapp_package=line_b['package'],
                     activity_info={'from': line_b['number'], 'to': line_a['number']}
                 )
+    
+    def run_uno_a_muchos_simultaneous_thread(self):
+        """
+        Lógica de envío SIMULTÁNEO para MODO NÚMEROS - UNO A MUCHOS.
+        Usa ThreadPoolExecutor para garantizar ejecución paralela real.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        self.log("Iniciando MODO NÚMEROS (Uno a muchos) - SIMULTÁNEO...", 'info')
+        if len(self.detected_phone_lines) < 2:
+            self.log("Se necesitan al menos 2 líneas de WhatsApp para este modo.", 'error')
+            messagebox.showerror("Error", "Se necesitan al menos 2 líneas de WhatsApp detectadas.", parent=self.root)
+            return
+
+        lines = self.detected_phone_lines.copy()
+        num_lines = len(lines)
+        num_bucles = self.manual_loops_var.get()
+        
+        # Obtener la cantidad de dispositivos físicos únicos
+        unique_devices = list(set(line['device'] for line in lines))
+        num_devices_phys = len(unique_devices)
+        self.log(f"Dispositivos físicos únicos: {num_devices_phys}", 'info')
+
+        # Separar líneas por tipo de WhatsApp
+        business_lines = [line for line in lines if line.get('type') == 'WhatsApp Business']
+        normal_lines = [line for line in lines if line.get('type') == 'WhatsApp']
+        
+        self.log(f"Líneas detectadas: {len(business_lines)} Business, {len(normal_lines)} Normal", 'info')
+
+        task_counter = [0]  # Usar lista para mutabilidad en closure
+        mensaje_index = [self.mensaje_start_index]
+        total_mensajes_lib = len(self.manual_messages_numbers)
+
+        def execute_send(sender_device, sender_package, sender_number, target_number, task_idx):
+            """Función que ejecuta un envío. Corre en un thread del pool."""
+            mensaje = self.manual_messages_numbers[mensaje_index[0] % total_mensajes_lib]
+            mensaje_index[0] += 1
+            
+            link = f"https://wa.me/{target_number.replace('+', '')}?text={urllib.parse.quote(mensaje, safe='')}"
+            activity_info = {'from': sender_number, 'to': target_number}
+            
+            self.run_single_task(
+                sender_device, 
+                link, 
+                None, 
+                task_idx, 
+                whatsapp_package=sender_package, 
+                activity_info=activity_info, 
+                skip_delay=True
+            )
+            return True
+
+        for bucle_num in range(num_bucles):
+            if self.should_stop: break
+            self.log(f"\n--- BUCLE {bucle_num + 1}/{num_bucles} (SIMULTÁNEO) ---", 'success')
+
+            for target_idx, target_line in enumerate(lines):
+                while self.is_paused and not self.should_stop:
+                    time.sleep(0.1)
+                
+                if self.should_stop: break
+                
+                self.log(f"\n>>> Destino {target_idx + 1}/{num_lines}: {target_line['number']} <<<", 'info')
+                
+                # --- PASO 1: Todos los Business envían a este destino ---
+                business_senders = [line for line in business_lines if line['number'] != target_line['number']]
+                if business_senders:
+                    self.log(f"[BUSINESS] Enviando {len(business_senders)} mensajes SIMULTÁNEAMENTE...", 'info')
+                    
+                    # Usar ThreadPoolExecutor para ejecución paralela real
+                    with ThreadPoolExecutor(max_workers=len(business_senders)) as executor:
+                        futures = []
+                        for sender in business_senders:
+                            task_counter[0] += 1
+                            future = executor.submit(
+                                execute_send,
+                                sender['device'],
+                                sender['package'],
+                                sender['number'],
+                                target_line['number'],
+                                task_counter[0]
+                            )
+                            futures.append(future)
+                        
+                        # Esperar a que todos terminen
+                        for future in as_completed(futures):
+                            try:
+                                future.result()
+                            except Exception as e:
+                                self.log(f"Error en thread: {e}", 'error')
+                    
+                    if self.should_stop: break
+                    self.log(f"[BUSINESS] Completado", 'success')
+                    
+                    # Pequeño delay entre Business y Normal
+                    normal_senders = [line for line in normal_lines if line['number'] != target_line['number']]
+                    if normal_senders:
+                        delay = random.uniform(2, 4)
+                        self.log(f"⏳ Esperando {delay:.1f}s antes de Normal...", 'info')
+                        self._controlled_sleep(delay)
+                
+                if self.should_stop: break
+                
+                # --- PASO 2: Todos los Normal envían a este destino ---
+                normal_senders = [line for line in normal_lines if line['number'] != target_line['number']]
+                if normal_senders:
+                    self.log(f"[NORMAL] Enviando {len(normal_senders)} mensajes SIMULTÁNEAMENTE...", 'info')
+                    
+                    # Usar ThreadPoolExecutor para ejecución paralela real
+                    with ThreadPoolExecutor(max_workers=len(normal_senders)) as executor:
+                        futures = []
+                        for sender in normal_senders:
+                            task_counter[0] += 1
+                            future = executor.submit(
+                                execute_send,
+                                sender['device'],
+                                sender['package'],
+                                sender['number'],
+                                target_line['number'],
+                                task_counter[0]
+                            )
+                            futures.append(future)
+                        
+                        # Esperar a que todos terminen
+                        for future in as_completed(futures):
+                            try:
+                                future.result()
+                            except Exception as e:
+                                self.log(f"Error en thread: {e}", 'error')
+                    
+                    if self.should_stop: break
+                    self.log(f"[NORMAL] Completado", 'success')
+                
+                if self.should_stop: break
+                self.log(f">>> Destino {target_idx + 1}/{num_lines} finalizado", 'success')
+                
+                # Delay entre destinos
+                if target_idx < num_lines - 1:
+                    delay = random.uniform(self.fidelizado_send_delay_min.get(), self.fidelizado_send_delay_max.get())
+                    self.log(f"⏳ Esperando {delay:.1f}s antes del siguiente destino...", 'info')
+                    self._controlled_sleep(delay)
+            
+            if self.should_stop: break
+            self.log(f"\n--- FIN BUCLE {bucle_num + 1}/{num_bucles} ---", 'success')
+
+        self.log(f"\nModo Números (Uno a muchos) SIMULTÁNEO finalizado", 'success')
+
+    def run_numeros_manual_thread(self):
+        """
+        Lógica de envío para MODO NÚMEROS MANUAL.
+        Envía mensajes a los números cargados manualmente en la caja de texto.
+        Todos los teléfonos (primero Business, luego Normal) hablan al primer número,
+        luego hacen la pausa correspondiente y siguen con el número 2.
+        
+        LÓGICA SIMPLIFICADA:
+        1. Abrir link wa.me con mensaje incluido
+        2. Esperar que cargue el chat
+        3. Hacer clic en botón enviar
+        """
+        self.log("Iniciando MODO NÚMEROS MANUAL...", 'info')
+        
+        numeros = self.manual_inputs_numbers
+        if not numeros:
+            self.log("Error: No hay números cargados.", 'error')
+            messagebox.showerror("Error", "No hay números cargados.", parent=self.root)
+            return
+        
+        if not self.manual_messages_numbers:
+            self.log("Error: No hay mensajes cargados.", 'error')
+            messagebox.showerror("Error", "No hay mensajes cargados.", parent=self.root)
+            return
+        
+        # Obtener dispositivos filtrados
+        active_devices = self._get_filtered_devices()
+        if not active_devices:
+            self.log("No hay dispositivos que cumplan con el filtro seleccionado.", "error")
+            self.root.after(0, lambda: messagebox.showerror("Error", "No se encontraron dispositivos que cumplan con el filtro de WhatsApp seleccionado.", parent=self.root))
+            return
+        
+        num_numeros = len(numeros)
+        num_bucles = self.manual_loops_var.get()
+        mensaje_index = self.mensaje_start_index
+        total_mensajes_lib = len(self.manual_messages_numbers)
+        task_counter = 0
+        
+        # Construir lista de workers en el orden correcto (Business primero, luego Normal)
+        workers = self._get_ordered_workers(active_devices)
+        num_workers = len(workers)
+        
+        self.log(f"Modo Números Manual: {num_bucles} bucle(s), {num_numeros} números, {num_workers} workers", 'info')
+        
+        # --- Bucle principal ---
+        for bucle_num in range(num_bucles):
+            if self.should_stop: break
+            self.log(f"\n--- INICIANDO BUCLE {bucle_num + 1}/{num_bucles} ---", 'success')
+            
+            # Por cada número
+            for idx_numero, numero in enumerate(numeros):
+                if self.should_stop: break
+                
+                # Normalizar el número
+                clean_numero = ''.join(filter(str.isdigit, numero))
+                if not clean_numero:
+                    self.log(f"Número inválido ignorado: {numero}", 'warning')
+                    continue
+                
+                self.log(f"\n=== NÚMERO {idx_numero + 1}/{num_numeros}: {clean_numero} ===", 'info')
+                
+                # Por cada worker (todos los teléfonos, Business primero luego Normal)
+                for worker_idx, (device, wa_name, wa_package) in enumerate(workers):
+                    if self.should_stop: break
+                    
+                    # Verificar pausa
+                    while self.is_paused and not self.should_stop:
+                        time.sleep(0.1)
+                    if self.should_stop: break
+                    
+                    task_counter += 1
+                    self.current_index = task_counter
+                    self.root.after(0, self.update_stats)
+                    
+                    # Obtener mensaje rotativo
+                    mensaje = self.manual_messages_numbers[mensaje_index % total_mensajes_lib]
+                    mensaje_index += 1
+                    
+                    # Construir link de WhatsApp (el mensaje va incluido en el link)
+                    if len(clean_numero) == 10:  # Número local argentino
+                        wa_link = f"https://wa.me/549{clean_numero}?text={urllib.parse.quote(mensaje, safe='')}"
+                    else:
+                        wa_link = f"https://wa.me/{clean_numero}?text={urllib.parse.quote(mensaje, safe='')}"
+                    
+                    self.log(f"[{device}] ({wa_name}) -> {clean_numero}", 'info')
+                    
+                    # === ENVÍO SIMPLIFICADO ===
+                    success = self._send_simple_whatsapp(device, wa_link, wa_package)
+                    
+                    if success:
+                        self.sent_count += 1
+                        self.log(f"[{device}] ({wa_name}) -> {clean_numero} ✓", 'success')
+                    else:
+                        self.failed_count += 1
+                        self.log(f"[{device}] ({wa_name}) -> {clean_numero} ✗", 'error')
+                    
+                    self.root.after(0, self.update_stats)
+                
+                # Pausa entre números (solo si no es el último número)
+                if idx_numero < num_numeros - 1 and not self.should_stop:
+                    delay = random.uniform(self.fidelizado_send_delay_min.get(), self.fidelizado_send_delay_max.get())
+                    self.log(f"⏳ Esperando {delay:.1f}s antes del siguiente número...", 'info')
+                    self._controlled_sleep(delay)
+            
+            if self.should_stop: break
+            self.log(f"\n--- FIN BUCLE {bucle_num + 1}/{num_bucles} ---", 'success')
+        
+        self.log(f"\nModo Números Manual finalizado", 'success')
+
+    def _send_simple_whatsapp(self, device, wa_link, wa_package):
+        """
+        Envío simplificado de WhatsApp:
+        1. Abrir el link (ya tiene el mensaje incluido)
+        2. Esperar que cargue el chat
+        3. Hacer clic en el botón enviar
+        
+        SIN verificación de texto, SIN reintentos complejos, SIN toques extra.
+        """
+        try:
+            # 1. Conectar uiautomator2
+            try:
+                ui_device = u2.connect(device)
+                ui_device.unlock()
+            except Exception as e:
+                self.log(f"[{device}] No se pudo conectar: {e}", 'error')
+                return False
+            
+            # 2. Abrir el link de WhatsApp
+            open_args = ['-s', device, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', 
+                        '-d', f'"{wa_link}"', '-p', wa_package]
+            
+            if not self._run_adb_command(open_args, timeout=15):
+                self.log(f"[{device}] No se pudo abrir el chat", 'error')
+                return False
+            
+            # 3. Esperar que cargue el chat (tiempo configurable)
+            wait_time = max(3, int(self.wait_after_open.get()))
+            self._controlled_sleep(wait_time)
+            
+            if self.should_stop:
+                return False
+            
+            # 4. Buscar el botón de enviar (el mensaje ya está pre-cargado en el link)
+            send_button = self._locate_message_send_button(ui_device, is_sms=False, wait_timeout=3)
+            
+            if not send_button:
+                self.log(f"[{device}] No se encontró el botón de enviar", 'error')
+                return False
+            
+            # 5. Hacer clic en enviar
+            try:
+                send_button.click()
+                self._controlled_sleep(1.0)  # Pequeña pausa para que se envíe
+                return True
+            except Exception as e:
+                self.log(f"[{device}] Error al hacer clic en enviar: {e}", 'error')
+                return False
+            
+        except Exception as e:
+            self.log(f"[{device}] Error en envío: {e}", 'error')
+            return False
+
     
     def _get_ordered_workers(self, active_devices):
         """
@@ -6885,35 +8058,40 @@ class Hermes:
         if ui_device is None:
             return None
 
-        selectors = [
-            dict(description="Enviar"),
-            dict(description="Enviar mensaje"),
-            dict(description="Send"),
-            dict(descriptionMatches="(?i).*enviar.*"),
-            dict(descriptionMatches="(?i).*send.*"),
-            dict(text="Enviar"),
-            dict(text="Enviar mensaje"),
-            dict(text="Send"),
-            dict(textMatches="(?i).*enviar.*"),
-            dict(textMatches="(?i).*send.*"),
-            dict(textMatches=r"^→$"),
-            dict(resourceId="com.whatsapp:id/send"),
-            dict(resourceId="com.whatsapp.w4b:id/send"),
-            dict(resourceId="com.whatsapp:id/send_button"),
-            dict(resourceId="com.whatsapp.w4b:id/send_button"),
-            dict(resourceIdMatches=r"(?i)com\.whatsapp(\.w4b)?\:id/(send(_button)?)")
-        ]
-
         if is_sms:
-            selectors.extend([
-                dict(resourceIdMatches="(?i).*send.*"),
-                dict(descriptionMatches="(?i).*sms.*enviar.*"),
-                dict(textMatches="(?i).*sms.*enviar.*"),
-            ])
-
+            selectors = [
+                # Google Messages
+                dict(resourceId="com.google.android.apps.messaging:id/send_message_button"),
+                dict(resourceId="com.google.android.apps.messaging:id/send_message_button_icon"),
+                # Samsung Messages
+                dict(resourceId="com.samsung.android.messaging:id/send_button"),
+                # Selectores AMPLIOS (RCS, SMS, Enviar)
+                # Confiamos en el filtro de posición de send_msg para evitar botones de arriba
+                dict(textMatches="(?i).*(sms|enviar|send|rcs).*"),
+                dict(descriptionMatches="(?i).*(sms|enviar|send|rcs).*"),
+                dict(contentDescriptionMatches="(?i).*(sms|enviar|send|rcs).*"),
+                # Selectores específicos de iconos de Google Messages (candado, avión, etc)
+                dict(resourceIdMatches="(?i).*send_message_button.*"),
+                dict(resourceIdMatches="(?i).*send_button.*"),
+            ]
+        else:
+            selectors = [
+                dict(description="Enviar"),
+                dict(description="Enviar mensaje"),
+                dict(description="Send"),
+                dict(text="Enviar"),
+                dict(text="Enviar mensaje"),
+                dict(text="Send"),
+                dict(resourceId="com.whatsapp:id/send"),
+                dict(resourceId="com.whatsapp.w4b:id/send"),
+                dict(resourceId="com.whatsapp:id/send_button"),
+                dict(resourceId="com.whatsapp.w4b:id/send_button"),
+            ]
+ 
         for attempt in range(2):
             for selector in selectors:
-                # Verificar cancelación/pausa entre cada intento de selector
+                # Verificar cancelación/pausa entre cada intento de selector 
+
                 if self.should_stop:
                     return None
 
@@ -6922,37 +8100,46 @@ class Hermes:
 
                 try:
                     candidate = ui_device(**selector)
-
-                    # Algunos nodos fallan en el método "wait" con errores del JSON-RPC.
-                    # Para evitar que el flujo completo se interrumpa, comprobamos de forma
-                    # segura la existencia y pasamos al siguiente selector si ocurre un error.
-                    try:
-                        candidate_exists = candidate.exists
-                    except Exception:
-                        candidate_exists = False
-
-                    if not candidate_exists:
-                        try:
-                            if not candidate.wait_exists(timeout=wait_timeout):
+                    if candidate.exists:
+                        info = candidate.info
+                        bounds = info.get('bounds')
+                        if bounds:
+                            # Filtro estricto de posición (evita botones de arriba)
+                            w_size = ui_device.window_size()
+                            h = w_size[1]
+                            top = bounds.get('top', 0)
+                            if top < (h * 0.3): # Ignorar 30% superior
                                 continue
-                        except Exception:
-                            continue
-
-                    info = candidate.info or {}
-                    class_name = (info.get('className') or '').lower()
-                    if 'edittext' in class_name:
-                        continue
-
-                    bounds = info.get('bounds') or {}
-                    if not bounds or bounds.get('left') == bounds.get('right'):
-                        continue
-
-                    return candidate
-                except Exception:
+                        return candidate
+                except:
                     continue
 
-            if attempt == 0 and not self.should_stop:
-                time.sleep(0.1)
+        # --- FALLBACK GEOMÉTRICO (Último recurso) ---
+        # Si no encontramos por nombre, buscamos CUALQUIER botón en la esquina inferior derecha.
+        if is_sms:
+            try:
+                w, h = ui_device.window_size()
+                # Buscar todos los elementos clickeables
+                all_clickables = ui_device(clickable=True)
+                
+                for item in all_clickables:
+                    try:
+                        info = item.info
+                        bounds = info.get('bounds')
+                        if not bounds: continue
+                        
+                        # Centro del elemento
+                        cx = (bounds['left'] + bounds['right']) / 2
+                        cy = (bounds['top'] + bounds['bottom']) / 2
+                        
+                        # Criterio: Estar en el 20% inferior y 20% derecho
+                        if cx > (w * 0.80) and cy > (h * 0.80):
+                            self.log(f"Botón encontrado por GEOMETRÍA (abajo-derecha): {info.get('text') or info.get('contentDescription')}", 'debug')
+                            return item
+                    except:
+                        continue
+            except Exception as e:
+                self.log(f"Error en búsqueda geométrica: {e}", 'debug')
 
         return None
 
@@ -7130,42 +8317,55 @@ class Hermes:
 
                 # --- MODO SMS SIMPLIFICADO ---
                 if local_is_sms:
-                    # Asegurar pantalla encendida
+                    # 1. Asegurar pantalla encendida
                     self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=5)
-                    self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_MENU'], timeout=5)
 
-                    # 1. Inyectar URL
+                    # 2. Inyectar URL para abrir el mensaje (Usando comillas dobles para compatibilidad de shell)
                     open_args = ['-s', device, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', f'"{current_link}"']
-                    if not self._run_adb_command(open_args, timeout=20):
-                        self.log(log_prefix, 'error')
-                        self.log(f"  └─ Motivo: No se pudo abrir la app de SMS.", 'error')
+                    if not self._run_adb_command(open_args, timeout=15):
+                        self.log(f"{log_prefix} ✗ Error al abrir la App de SMS.", 'error')
                         return False, False
-
-                    # 2. Esperar tiempo "Esperar a enviar"
+                    
+                    # 3. Esperar tiempo configurado por el usuario (estático)
                     try:
-                        wait_send = max(0, int(self.wait_after_first_enter.get()))
+                        # Permitir que el usuario baje hasta 0.5s si lo desea
+                        wait_send = max(0.5, float(self.wait_after_first_enter.get()))
                     except:
-                        wait_send = 2
+                        wait_send = 2.0
 
-                    # self.log(f"Esperando {wait_send}s para enviar...", 'info') # Verbose opcional
-                    self._controlled_sleep(wait_send)
+                    self.log(f"Esperando {wait_send}s (estabilización)...", 'info')
+                    time.sleep(wait_send)
 
                     if self.should_stop: return False, False
 
-                    # 3. Buscar y Clickear Botón Enviar
-                    send_btn = self._locate_message_send_button(ui_device, is_sms=True, wait_timeout=2)
-                    if send_btn:
-                        try:
-                            send_btn.click()
-                            self.log(log_prefix, 'success')
-                            return True, False
-                        except Exception as e:
-                            self.log(log_prefix, 'error')
-                            self.log(f"  └─ Motivo: Error al hacer clic en el botón enviar: {e}", 'error')
-                            return False, False
-                    else:
-                        self.log(log_prefix, 'error')
-                        self.log(f"  └─ Motivo: No se encontró el botón de enviar SMS.", 'error')
+                    # 4. Verificar qué aplicación se abrió (Opcional pero útil para debugging)
+                    app_info = ui_device.app_current()
+                    active_package = app_info.get('package', 'desconocido')
+                    self.log(f"App detectada: {active_package}", 'debug')
+
+                    if self.should_stop: return False, False
+
+                    if self.should_stop: return False, False
+
+                    if self.should_stop: return False, False
+
+                    # 4. ESTRATEGIA SOLICITADA: Usar ENTER para enviar
+                    # El usuario solicitó explícitamente "hace que apriete enter".
+                    self.log(f"Enviando vía ENTER (KEYCODE_66)...", 'info')
+                    
+                    try:
+                        # Enviamos ENTER dos veces por seguridad (algunos teclados requieren confirmación o foco)
+                        # KEYCODE_ENTER = 66
+                        cmd_enter = ['-s', device, 'shell', 'input', 'keyevent', '66']
+                        self._run_adb_command(cmd_enter, timeout=5)
+                        time.sleep(0.3)
+                        self._run_adb_command(cmd_enter, timeout=5) # Segundo enter de remate
+                        
+                        self.log(f"✓ {log_prefix} :: SMS Enviado (Enter)", 'success')
+                        time.sleep(1.5)
+                        return True, False
+                    except Exception as e:
+                        self.log(f"Fallo al enviar con Enter: {e}", 'error')
                         return False, False
 
                 # --- MODO WHATSAPP (Lógica original) ---
@@ -8252,29 +9452,830 @@ class Hermes:
         return device_numbers
 
     def close_all_apps(self, device):
-        """Fuerza el cierre de WhatsApp y Google (MOD 25)."""
-        self.log(f"Cerrando apps en {device}", 'info')
-        targets = [
-            "com.whatsapp.w4b",
-            "com.whatsapp",
-            "com.google.android.googlequicksearchbox",
-            "com.google.android.apps.messaging",
-            "com.samsung.android.messaging",
-            "com.android.mms"
+        """Intenta cerrar todas las aplicaciones de terceros y las apps clave en el dispositivo."""
+        self.log(f"Cerrando todas las apps en {device}...", 'info')
+        
+        try:
+            adb = self.adb_path.get()
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            
+            # 1. Obtener lista de apps de terceros (-3)
+            # Esto captura cualquier app instalada por el usuario o fabricante que no sea del sistema "core"
+            res = subprocess.run([adb, '-s', device, 'shell', 'pm', 'list', 'packages', '-3'], 
+                               capture_output=True, text=True, startupinfo=si, timeout=5)
+            
+            third_party_packages = []
+            if res.returncode == 0:
+                for line in res.stdout.strip().split('\n'):
+                    if line.startswith('package:'):
+                        pkg = line.replace('package:', '').strip()
+                        # Evitar cerrar el servidor de scrcpy si está corriendo (aunque suele reiniciarse solo)
+                        if "scrcpy" not in pkg.lower():
+                            third_party_packages.append(pkg)
+            
+            # 2. Lista explícita de objetivos comunes (mensajería, ajustes, etc.)
+            targets = [
+                "com.whatsapp.w4b",
+                "com.whatsapp",
+                "com.google.android.googlequicksearchbox",
+                "com.google.android.apps.messaging",
+                "com.samsung.android.messaging",
+                "com.android.mms",
+                "com.google.android.contacts",
+                "com.android.settings",
+                "com.android.chrome",
+                "com.google.android.youtube",
+                "com.facebook.katana",
+                "com.instagram.android"
+            ]
+            
+            # Combinar y eliminar duplicados
+            all_to_close = list(set(third_party_packages + targets))
+            
+            # 3. Ejecutar force-stop para cada una
+            for package in all_to_close:
+                # Usamos shell am force-stop directamente para más velocidad aquí
+                subprocess.Popen([adb, '-s', device, 'shell', 'am', 'force-stop', package],
+                                 startupinfo=si, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # 4. Volver a la pantalla de inicio (Home)
+            time.sleep(0.2)
+            subprocess.run([adb, '-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_HOME'],
+                          startupinfo=si, capture_output=True, timeout=3)
+            
+            self.log(f"✓ {device}: Apps cerradas.", 'success')
+            
+        except Exception as e:
+            self.log(f"Error al cerrar apps en {device}: {e}", 'error')
+
+    # ==================================================================================
+    #                           ASISTENTE DE IA - TALARIA
+    # ==================================================================================
+    # ==================================================================================
+    
+    def _init_ai_assistant(self):
+        """Inicializa el asistente de IA y crea la burbuja flotante."""
+        if AIAssistant is None:
+            self.log("Módulo de IA no disponible", "warning")
+            return
+        
+        # Intentar cargar API key guardada
+        config_file = os.path.join(BASE_DIR, '.ai_config')
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    self.ai_api_key = f.read().strip()
+            except:
+                pass
+        
+        # Inicializar asistente
+        adb_path = self.adb_path.get()
+        self.ai_assistant = AIAssistant(
+            api_key=self.ai_api_key if self.ai_api_key else None,
+            adb_path=adb_path,
+            log_callback=self.log
+        )
+        
+        # Crear la burbuja flotante de IA
+        self._setup_ai_bubble()
+        
+        # Crear la burbuja flotante de atajos
+        self._setup_shortcuts_bubble()
+    
+    def _setup_ai_bubble(self):
+        """Crea el botón flotante (burbuja) en la esquina inferior derecha."""
+        # Frame contenedor para la burbuja (siempre visible, sobre todo)
+        self.ai_bubble_frame = ctk.CTkFrame(
+            self.root,
+            fg_color="transparent",
+            width=60,
+            height=60
+        )
+        self.ai_bubble_frame.place(relx=1.0, rely=1.0, anchor='se', x=-20, y=-20)
+        self.ai_bubble_frame.lift()
+        
+        # Colores según el tema
+        bubble_color = "#7C3AED"  # Violeta vibrante
+        bubble_hover = "#6D28D9"
+        
+        # Botón circular con emoji de robot (perfectamente circular)
+        self.ai_bubble_btn = ctk.CTkButton(
+            self.ai_bubble_frame,
+            text="🤖",
+            font=('Segoe UI Emoji', 24),
+            width=56,
+            height=56,
+            corner_radius=28,
+            fg_color=bubble_color,
+            hover_color=bubble_hover,
+            text_color="white",
+            command=self._toggle_ai_chat
+        )
+        self.ai_bubble_btn.pack(expand=True)
+        
+        # Tooltip
+        Tooltip(self.ai_bubble_btn, "Talaria - Asistente de IA\nHaz clic para abrir el chat", self.fonts['dialog_text'])
+        
+        # Animación de pulso sutil
+        self._animate_bubble_pulse()
+
+    # --- Atajos Burbuja (NUEVO) ---
+    def _setup_shortcuts_bubble(self):
+        """Crea el botón flotante para ver los atajos al lado de la IA."""
+        self.shortcuts_bubble_frame = ctk.CTkFrame(
+            self.root,
+            fg_color="transparent",
+            width=60,
+            height=60
+        )
+        # Posicionarlo a la izquierda de la burbuja de IA con mucho más margen (x=-120)
+        self.shortcuts_bubble_frame.place(relx=1.0, rely=1.0, anchor='se', x=-120, y=-20)
+        self.shortcuts_bubble_frame.lift()
+        
+        bubble_color = "#3B82F6"  # Azul vibrante
+        bubble_hover = "#2563EB"
+        
+        self.shortcuts_bubble_btn = ctk.CTkButton(
+            self.shortcuts_bubble_frame,
+            text="⌨️",
+            font=('Segoe UI Emoji', 24),
+            width=56,
+            height=56,
+            corner_radius=28,
+            fg_color=bubble_color,
+            hover_color=bubble_hover,
+            text_color="white",
+            command=self._toggle_shortcuts_panel
+        )
+        self.shortcuts_bubble_btn.pack(expand=True)
+        
+        Tooltip(self.shortcuts_bubble_btn, "Atajos de Teclado\nHaz clic para ver la lista y ejecutarlos", self.fonts['dialog_text'])
+        self.shortcuts_panel_visible = False
+        self.shortcuts_panel = None
+
+    def _toggle_shortcuts_panel(self):
+        """Alterna el panel de atajos."""
+        if self.shortcuts_panel_visible:
+            self._close_shortcuts_panel()
+        else:
+            self._open_shortcuts_panel()
+
+    def _open_shortcuts_panel(self):
+        """Abre un panel flotante con la lista de atajos."""
+        if self.shortcuts_panel:
+            return
+
+        # Crear el panel como un frame flotante (place)
+        # Lo ponemos arriba de la burbuja
+        self.shortcuts_panel = ctk.CTkFrame(
+            self.root,
+            fg_color=self.colors['bg_card'],
+            corner_radius=15,
+            border_width=2,
+            border_color="#3B82F6"
+        )
+        # Posicionarlo arriba de la burbuja de atajos (x=-120)
+        self.shortcuts_panel.place(relx=1.0, rely=1.0, anchor='se', x=-120, y=-85)
+        self.shortcuts_panel.lift()
+        self.shortcuts_panel_visible = True
+
+        # Título
+        ctk.CTkLabel(
+            self.shortcuts_panel,
+            text="Atajos de Teclado",
+            font=('Inter', 14, 'bold'),
+            text_color=self.colors['text']
+        ).pack(pady=(10, 15), padx=20)
+
+        # Helper para crear botones de atajos
+        def add_shortcut_btn(label, combo, func):
+            btn_frame = ctk.CTkFrame(self.shortcuts_panel, fg_color="transparent")
+            btn_frame.pack(fill='x', padx=15, pady=2)
+            
+            btn = ctk.CTkButton(
+                btn_frame,
+                text=f"{label} ({combo})",
+                font=('Inter', 12),
+                anchor='w',
+                fg_color="transparent",
+                text_color=self.colors['text'],
+                hover_color=("#E5E7EB", "#374151"),
+                height=30,
+                command=func
+            )
+            btn.pack(fill='x')
+
+        # Lista de atajos
+        shortcuts_list = [
+            ("WhatsApp Business", "Ctrl + 1", self._shortcut_whatsapp_business),
+            ("WhatsApp Normal", "Ctrl + 2", self._shortcut_whatsapp_normal),
+            ("SMS App", "Ctrl + 3", self._shortcut_sms),
+            ("Ajustes", "Ctrl + 4", self._shortcut_settings),
+            ("Inicio", "Ctrl + 5", self._shortcut_home),
+            ("Modo Espejo", "Ctrl + 6", self._shortcut_mirror_mode),
+            ("Contactos", "Ctrl + 7", self._shortcut_google_contacts),
+            ("Cerrar Apps", "Ctrl + 8", self._shortcut_close_all),
+            ("Separador", "", None),
+            ("Perfil 1", "Ctrl+Alt+1", self._shortcut_profile_1),
+            ("Perfil 2", "Ctrl+Alt+2", self._shortcut_profile_2),
+            ("Perfil 3", "Ctrl+Alt+3", self._shortcut_profile_3),
+            ("Perfil 4", "Ctrl+Alt+4", self._shortcut_profile_4),
         ]
-        for package in targets:
-            close_args = ['-s', device, 'shell', 'am', 'force-stop', package]
-            self._run_adb_command(close_args, timeout=5) # Usar la función helper, ignorar resultado
+
+        for label, combo, func in shortcuts_list:
+            if label == "Separador":
+                ctk.CTkFrame(self.shortcuts_panel, height=2, fg_color=("#E5E7EB", "#374151")).pack(fill='x', padx=10, pady=5)
+            else:
+                add_shortcut_btn(label, combo, func)
+
+        # Botón Cerrar
+        ctk.CTkButton(
+            self.shortcuts_panel,
+            text="Cerrar",
+            font=('Inter', 11, 'bold'),
+            fg_color="#3B82F6",
+            hover_color="#2563EB",
+            height=28,
+            corner_radius=8,
+            command=self._close_shortcuts_panel
+        ).pack(pady=15, padx=20, fill='x')
+
+    def _close_shortcuts_panel(self):
+        """Cierra el panel de atajos."""
+        if self.shortcuts_panel:
+            self.shortcuts_panel.destroy()
+            self.shortcuts_panel = None
+        self.shortcuts_panel_visible = False
+    
+    def _animate_bubble_pulse(self):
+        """Anima la burbuja con un pulso sutil."""
+        if not hasattr(self, 'ai_bubble_btn') or not self.ai_bubble_btn.winfo_exists():
+            return
+        
+        # Solo animar si el chat no está visible
+        if not self.ai_chat_visible:
+            try:
+                current_color = "#7C3AED"
+                pulse_color = "#8B5CF6"
+                
+                def pulse_in():
+                    if hasattr(self, 'ai_bubble_btn') and self.ai_bubble_btn.winfo_exists():
+                        self.ai_bubble_btn.configure(fg_color=pulse_color)
+                        self.root.after(1000, pulse_out)
+                
+                def pulse_out():
+                    if hasattr(self, 'ai_bubble_btn') and self.ai_bubble_btn.winfo_exists():
+                        self.ai_bubble_btn.configure(fg_color=current_color)
+                
+                pulse_in()
+            except:
+                pass
+        
+        # Repetir cada 3 segundos
+        self.root.after(3000, self._animate_bubble_pulse)
+    
+    def _toggle_ai_chat(self):
+        """Abre o cierra el panel de chat de IA."""
+        if self.ai_chat_visible:
+            self._close_ai_chat()
+        else:
+            self._open_ai_chat()
+    
+    def _open_ai_chat(self):
+        """Abre el panel de chat de IA."""
+        if self.ai_chat_panel and self.ai_chat_panel.winfo_exists():
+            self.ai_chat_panel.destroy()
+        
+        self.ai_chat_visible = True
+        
+        # Cambiar icono del botón
+        self.ai_bubble_btn.configure(text="✕", font=('Inter', 20, 'bold'))
+        
+        # Crear panel de chat
+        self.ai_chat_panel = ctk.CTkFrame(
+            self.root,
+            fg_color=self.colors['bg_card'],
+            corner_radius=20,
+            border_width=1,
+            border_color="#333333",
+            width=400,
+            height=500
+        )
+        self.ai_chat_panel.place(relx=1.0, rely=1.0, anchor='se', x=-20, y=-90)
+        self.ai_chat_panel.pack_propagate(False)
+        self.ai_chat_panel.lift()
+        
+        # Header del chat
+        header = ctk.CTkFrame(self.ai_chat_panel, fg_color="#7C3AED", corner_radius=15, height=50)
+        header.pack(fill='x', padx=10, pady=(10, 5))
+        header.pack_propagate(False)
+        
+        title_label = ctk.CTkLabel(
+            header,
+            text="🤖 Talaria - Asistente de IA",
+            font=('Inter', 14, 'bold'),
+            text_color="white"
+        )
+        title_label.pack(side='left', padx=15, pady=10)
+        
+        # Botón de configuración
+        config_btn = ctk.CTkButton(
+            header,
+            text="⚙️",
+            width=30,
+            height=30,
+            corner_radius=15,
+            fg_color="transparent",
+            hover_color="#6D28D9",
+            command=self._open_ai_config
+        )
+        config_btn.pack(side='right', padx=10)
+        
+        # Botón de parar IA
+        self.ai_stop_btn = ctk.CTkButton(
+            header,
+            text="⏹",
+            width=30,
+            height=30,
+            corner_radius=15,
+            fg_color="transparent",
+            hover_color="#DC2626",
+            command=self._stop_ai_execution
+        )
+        self.ai_stop_btn.pack(side='right')
+        Tooltip(self.ai_stop_btn, "Detener IA", self.fonts['dialog_text'])
+        
+        # Botón de limpiar chat
+        clear_btn = ctk.CTkButton(
+            header,
+            text="🗑️",
+            width=30,
+            height=30,
+            corner_radius=15,
+            fg_color="transparent",
+            hover_color="#6D28D9",
+            command=self._clear_ai_chat
+        )
+        clear_btn.pack(side='right')
+        
+        # Área de mensajes (scrollable)
+        self.ai_messages_frame = ctk.CTkScrollableFrame(
+            self.ai_chat_panel,
+            fg_color="transparent",
+            corner_radius=0
+        )
+        self.ai_messages_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # Mostrar historial
+        self._display_ai_history()
+        
+        # Mostrar mensaje de bienvenida si está vacío
+        if not self.ai_chat_history:
+            self._add_ai_message(
+                "¡Hola! Soy **Talaria**, tu asistente de IA. 🤖\n\n"
+                "Puedo ayudarte a controlar los teléfonos conectados. Por ejemplo:\n"
+                "• \"Abre Chrome\"\n"
+                "• \"Ve a google.com\"\n"
+                "• \"Abre WhatsApp\"\n"
+                "• \"Manda 'Hola' al primer chat\"\n\n"
+                "¿En qué puedo ayudarte?",
+                is_user=False
+            )
+        
+        # Input area
+        input_frame = ctk.CTkFrame(self.ai_chat_panel, fg_color="transparent", height=60)
+        input_frame.pack(fill='x', padx=10, pady=(5, 10))
+        input_frame.pack_propagate(False)
+        
+        self.ai_input = ctk.CTkEntry(
+            input_frame,
+            placeholder_text="Escribe un mensaje...",
+            font=('Inter', 13),
+            height=45,
+            corner_radius=20,
+            fg_color=self.colors['bg'],
+            border_color="#444444"
+        )
+        self.ai_input.pack(side='left', fill='x', expand=True, padx=(0, 10))
+        self.ai_input.bind('<Return>', self._on_ai_send)
+        
+        send_btn = ctk.CTkButton(
+            input_frame,
+            text="➤",
+            font=('Inter', 18),
+            width=45,
+            height=45,
+            corner_radius=22,
+            fg_color="#7C3AED",
+            hover_color="#6D28D9",
+            command=self._on_ai_send
+        )
+        send_btn.pack(side='right')
+        
+        # Foco en el input
+        self.ai_input.focus_set()
+    
+    def _close_ai_chat(self):
+        """Cierra el panel de chat de IA."""
+        self.ai_chat_visible = False
+        
+        if self.ai_chat_panel and self.ai_chat_panel.winfo_exists():
+            self.ai_chat_panel.destroy()
+        
+        # Restaurar icono del botón
+        self.ai_bubble_btn.configure(text="🤖", font=('Segoe UI Emoji', 28))
+    
+    def _add_ai_message(self, text, is_user=False):
+        """Agrega un mensaje al chat."""
+        # Guardar en historial
+        self.ai_chat_history.append({"text": text, "is_user": is_user})
+        
+        # Crear burbuja de mensaje
+        msg_frame = ctk.CTkFrame(
+            self.ai_messages_frame,
+            fg_color="#7C3AED" if is_user else "#2D2D2D",
+            corner_radius=15
+        )
+        
+        if is_user:
+            msg_frame.pack(anchor='e', pady=5, padx=5)
+        else:
+            msg_frame.pack(anchor='w', pady=5, padx=5)
+        
+        msg_label = ctk.CTkLabel(
+            msg_frame,
+            text=text,
+            font=('Inter', 12),
+            text_color="white",
+            wraplength=300,
+            justify='left' if not is_user else 'right',
+            padx=12,
+            pady=8
+        )
+        msg_label.pack()
+        
+        # Scroll al final
+        self.ai_messages_frame._parent_canvas.yview_moveto(1.0)
+    
+    def _display_ai_history(self):
+        """Muestra el historial de mensajes."""
+        for msg in self.ai_chat_history:
+            msg_frame = ctk.CTkFrame(
+                self.ai_messages_frame,
+                fg_color="#7C3AED" if msg['is_user'] else "#2D2D2D",
+                corner_radius=15
+            )
+            
+            if msg['is_user']:
+                msg_frame.pack(anchor='e', pady=5, padx=5)
+            else:
+                msg_frame.pack(anchor='w', pady=5, padx=5)
+            
+            msg_label = ctk.CTkLabel(
+                msg_frame,
+                text=msg['text'],
+                font=('Inter', 12),
+                text_color="white",
+                wraplength=300,
+                justify='left' if not msg['is_user'] else 'right',
+                padx=12,
+                pady=8
+            )
+            msg_label.pack()
+    
+    def _on_ai_send(self, event=None):
+        """Procesa el envío de un mensaje del usuario."""
+        if not hasattr(self, 'ai_input') or not self.ai_input.winfo_exists():
+            return
+        
+        user_text = self.ai_input.get().strip()
+        if not user_text:
+            return
+        
+        # Limpiar input
+        self.ai_input.delete(0, 'end')
+        
+        # Mostrar mensaje del usuario
+        self._add_ai_message(user_text, is_user=True)
+        
+        # Verificar si la IA está configurada
+        if not self.ai_assistant or not self.ai_assistant.is_configured:
+            self._add_ai_message(
+                "⚠️ La IA no está configurada.\n\n"
+                "Por favor, haz clic en ⚙️ para agregar tu API key de Gemini.\n\n"
+                "Puedes obtener una gratis en:\nhttps://aistudio.google.com/apikey",
+                is_user=False
+            )
+            return
+        
+        # Mostrar indicador de "escribiendo..."
+        typing_msg = self._show_typing_indicator()
+        
+        # Procesar en hilo separado para no bloquear la UI
+        def process_async():
+            try:
+                # Obtener respuesta de la IA
+                result = self.ai_assistant.process_message(user_text, self.devices)
+                
+                # Actualizar UI en el hilo principal
+                self.root.after(0, lambda: self._handle_ai_response(result, typing_msg))
+            except Exception as e:
+                self.root.after(0, lambda: self._handle_ai_error(str(e), typing_msg))
+        
+        threading.Thread(target=process_async, daemon=True).start()
+    
+    def _show_typing_indicator(self):
+        """Muestra un indicador de que la IA está procesando."""
+        typing_frame = ctk.CTkFrame(
+            self.ai_messages_frame,
+            fg_color="#2D2D2D",
+            corner_radius=15
+        )
+        typing_frame.pack(anchor='w', pady=5, padx=5)
+        
+        typing_label = ctk.CTkLabel(
+            typing_frame,
+            text="🤖 Pensando...",
+            font=('Inter', 12),
+            text_color="#888888",
+            padx=12,
+            pady=8
+        )
+        typing_label.pack()
+        
+        self.ai_messages_frame._parent_canvas.yview_moveto(1.0)
+        return typing_frame
+    
+    def _handle_ai_response(self, result, typing_widget):
+        """Maneja la respuesta de la IA."""
+        # Eliminar indicador de "escribiendo"
+        if typing_widget and typing_widget.winfo_exists():
+            typing_widget.destroy()
+        
+        # Mostrar mensaje de la IA
+        message = result.get('message', 'No pude procesar tu solicitud.')
+        self._add_ai_message(message, is_user=False)
+        
+        # Ejecutar acciones si las hay
+        actions = result.get('actions', [])
+        target = result.get('target', 'all')  # Por defecto ejecutar en todos
+        
+        if actions and self.devices:
+            # Determinar en qué dispositivos ejecutar
+            if target == 'all':
+                target_devices = self.devices  # Todos los dispositivos
+            elif target == 'first':
+                target_devices = [self.devices[0]]  # Solo el primero
+            elif target in self.devices:
+                target_devices = [target]  # Dispositivo específico
+            else:
+                target_devices = self.devices  # Por defecto todos
+            
+            device_count = len(target_devices)
+            self._add_ai_message(f"⚡ Ejecutando en {device_count} dispositivo(s)...", is_user=False)
+            
+            # Configurar callback para feedback en tiempo real
+            def realtime_feedback(msg, status="info"):
+                def show():
+                    if hasattr(self, 'ai_messages_frame') and self.ai_messages_frame.winfo_exists():
+                        self._add_ai_message(f"   {msg}", is_user=False)
+                self.root.after(0, show)
+            
+            if self.ai_assistant and hasattr(self.ai_assistant, 'set_feedback_callback'):
+                self.ai_assistant.set_feedback_callback(realtime_feedback)
+            
+            def execute_async():
+                all_results = []
+                
+                # Ejecutar SECUENCIALMENTE para evitar conflictos entre dispositivos
+                for device in target_devices:
+                    short_id = device[:8] + "..." if len(device) > 10 else device
+                    self.root.after(0, lambda d=short_id: self._add_ai_message(f"📱 Ejecutando en [{d}]...", is_user=False))
+                    
+                    try:
+                        results = self.ai_assistant.execute_actions(actions, device)
+                        for msg, success in results:
+                            all_results.append((device, msg, success))
+                        
+                        # Pequeña pausa entre dispositivos para estabilidad
+                        import time
+                        time.sleep(0.5)
+                        
+                    except Exception as e:
+                        all_results.append((device, f"Error: {e}", False))
+                
+                # Reportar resultados finales
+                def show_results():
+                    self._add_ai_message("─" * 30, is_user=False)
+                    success_count = sum(1 for r in all_results if r[2])
+                    fail_count = len(all_results) - success_count
+                    
+                    for device, msg, success in all_results:
+                        status = "✅" if success else "❌"
+                        short_id = device[:8] + "..." if len(device) > 10 else device
+                        self._add_ai_message(f"{status} [{short_id}] {msg}", is_user=False)
+                    
+                    if fail_count == 0:
+                        self._add_ai_message(f"🎉 ¡Completado en {device_count} dispositivo(s)!", is_user=False)
+                    else:
+                        self._add_ai_message(f"⚠️ {success_count} éxitos, {fail_count} fallos", is_user=False)
+                
+                self.root.after(0, show_results)
+            
+            threading.Thread(target=execute_async, daemon=True).start()
+        elif actions and not self.devices:
+            self._add_ai_message(
+                "⚠️ No hay dispositivos conectados.\n"
+                "Conecta un teléfono y haz clic en 'Detectar'.",
+                is_user=False
+            )
+    
+    def _handle_ai_error(self, error_msg, typing_widget):
+        """Maneja errores de la IA."""
+        if typing_widget and typing_widget.winfo_exists():
+            typing_widget.destroy()
+        
+        self._add_ai_message(f"❌ Error: {error_msg}", is_user=False)
+    
+    def _stop_ai_execution(self):
+        """Detiene la ejecución actual de la IA."""
+        self.ai_stop_requested = True
+        
+        # Detener el agente de visión
+        if self.ai_assistant and hasattr(self.ai_assistant, 'device_controller'):
+            if self.ai_assistant.device_controller:
+                self.ai_assistant.device_controller.stop_requested = True
+        
+        self._add_ai_message("⏹️ Deteniendo IA...", is_user=False)
+        
+        # Cambiar color del botón temporalmente para feedback visual
+        if hasattr(self, 'ai_stop_btn') and self.ai_stop_btn.winfo_exists():
+            self.ai_stop_btn.configure(fg_color="#DC2626")
+            self.root.after(1000, lambda: self.ai_stop_btn.configure(fg_color="transparent") if self.ai_stop_btn.winfo_exists() else None)
+        
+        # Resetear después de un momento
+        self.root.after(2000, self._reset_ai_stop)
+    
+    def _reset_ai_stop(self):
+        """Resetea el flag de stop."""
+        self.ai_stop_requested = False
+    
+    def _clear_ai_chat(self):
+        """Limpia el historial del chat."""
+        self.ai_chat_history = []
+        
+        if self.ai_assistant:
+            self.ai_assistant.reset_chat()
+        
+        # Limpiar widgets
+        if hasattr(self, 'ai_messages_frame') and self.ai_messages_frame.winfo_exists():
+            for widget in self.ai_messages_frame.winfo_children():
+                widget.destroy()
+        
+        # Mostrar mensaje de bienvenida
+        self._add_ai_message(
+            "Chat limpiado. ¿En qué puedo ayudarte? 🤖",
+            is_user=False
+        )
+    
+    def _open_ai_config(self):
+        """Abre la ventana de configuración de la IA."""
+        config_window = ctk.CTkToplevel(self.root)
+        config_window.title("Configuración de Talaria")
+        config_window.geometry("450x300")
+        config_window.attributes('-topmost', True)
+        self._center_toplevel(config_window, 450, 300)
+        
+        # Frame principal
+        main_frame = ctk.CTkFrame(config_window, fg_color=self.colors['bg_card'])
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Título
+        title = ctk.CTkLabel(
+            main_frame,
+            text="🔧 Configuración de Talaria (OpenAI)",
+            font=('Inter', 18, 'bold'),
+            text_color=self.colors['text']
+        )
+        title.pack(pady=(10, 20))
+        
+        # API Key
+        api_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        api_frame.pack(fill='x', padx=20, pady=10)
+        
+        api_label = ctk.CTkLabel(
+            api_frame,
+            text="API Key de OpenAI:",
+            font=('Inter', 13),
+            text_color=self.colors['text']
+        )
+        api_label.pack(anchor='w')
+        
+        api_entry = ctk.CTkEntry(
+            api_frame,
+            placeholder_text="Ingresa tu API key...",
+            font=('Inter', 12),
+            height=40,
+            show="•"
+        )
+        api_entry.pack(fill='x', pady=(5, 0))
+        
+        if self.ai_api_key:
+            api_entry.insert(0, self.ai_api_key)
+        
+        # Link para obtener API key
+        link_label = ctk.CTkLabel(
+            main_frame,
+            text="📎 Obtener API key: platform.openai.com/api-keys",
+            font=('Inter', 11),
+            text_color="#7C3AED",
+            cursor="hand2"
+        )
+        link_label.pack(pady=10)
+        link_label.bind("<Button-1>", lambda e: os.startfile("https://platform.openai.com/api-keys"))
+        
+        # Estado actual
+        status_text = "✅ Configurada" if (self.ai_assistant and self.ai_assistant.is_configured) else "❌ No configurada"
+        status_label = ctk.CTkLabel(
+            main_frame,
+            text=f"Estado: {status_text}",
+            font=('Inter', 12),
+            text_color=self.colors['text_light']
+        )
+        status_label.pack(pady=10)
+        
+        # Botón guardar
+        def save_config():
+            new_key = api_entry.get().strip()
+            if new_key:
+                self.ai_api_key = new_key
+                
+                # Guardar en archivo
+                config_file = os.path.join(BASE_DIR, '.ai_config')
+                try:
+                    with open(config_file, 'w') as f:
+                        f.write(new_key)
+                except:
+                    pass
+                
+                # Reconfigurar asistente
+                if self.ai_assistant:
+                    adb_path = self.adb_path.get()
+                    self.ai_assistant.configure(new_key, adb_path)
+                    
+                    if self.ai_assistant.is_configured:
+                        messagebox.showinfo("Éxito", "¡Talaria configurada correctamente! 🎉")
+                        config_window.destroy()
+                    else:
+                        messagebox.showerror("Error", "No se pudo configurar OpenAI. Verifica tu API key y conexión.")
+            else:
+                messagebox.showwarning("Atención", "Por favor, ingresa una API key.")
+        
+        save_btn = ctk.CTkButton(
+            main_frame,
+            text="💾 Guardar",
+            font=('Inter', 14, 'bold'),
+            height=45,
+            corner_radius=10,
+            fg_color="#7C3AED",
+            hover_color="#6D28D9",
+            command=save_config
+        )
+        save_btn.pack(pady=20)
 
 # --- Main ---
 def main():
     """Función principal: Configura CTk y abre la app principal."""
+    # Configurar apariencia
     ctk.set_appearance_mode("Dark")
     ctk.set_default_color_theme("blue")
+    
+    # Configurar escalado automático de CustomTkinter
+    ctk.deactivate_automatic_dpi_awareness()  # Usamos el nuestro configurado arriba
+    
     root = ctk.CTk()
-
-    # Iniciar directamente la aplicación principal
+    
+    # Obtener información del monitor
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    
+    # Configurar tamaño inicial (90% de la pantalla)
+    window_width = int(screen_width * 0.9)
+    window_height = int(screen_height * 0.9)
+    
+    # Centrar la ventana
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    # Iniciar la aplicación
     app = Hermes(root)
+    
+    # Maximizar después de un pequeño delay para evitar problemas de layout
+    root.after(100, lambda: root.state('zoomed'))
 
     root.mainloop()
 

@@ -8313,28 +8313,23 @@ class Hermes:
 
                     if self.should_stop: return False, False
 
-                    # 4. Buscar botón ENVIAR (estricto, sin adivinanzas)
-                    self.log(f"Buscando botón 'Enviar'...", 'info')
-                    send_button = self._locate_message_send_button(ui_device, is_sms=True, wait_timeout=3)
+                    # 4. ESTRATEGIA SOLICITADA: Usar ENTER para enviar
+                    # El usuario solicitó explícitamente "cambia que en vez de enviar apretar ENTER nada mas".
+                    self.log(f"Enviando vía ENTER (KEYCODE_66)...", 'info')
 
-                    if send_button and send_button.exists:
-                        try:
-                            send_button.click()
-                            self.log(f"✓ {log_prefix} :: Botón ENVIAR presionado.", 'success')
+                    try:
+                        # Enviamos ENTER dos veces por seguridad (algunos teclados requieren confirmación o foco)
+                        # KEYCODE_ENTER = 66
+                        cmd_enter = ['-s', device, 'shell', 'input', 'keyevent', '66']
+                        self._run_adb_command(cmd_enter, timeout=5)
+                        self._controlled_sleep(0.3)
+                        self._run_adb_command(cmd_enter, timeout=5) # Segundo enter de remate
 
-                            # Pequeña espera y verificar si apareció error
-                            self._controlled_sleep(1.5)
-                            if self._detect_send_failure(ui_device):
-                                self.log(f"{log_prefix} ✗ Error reportado por la App tras enviar.", 'error')
-                                return False, True
-
-                            return True, False
-                        except Exception as e:
-                            self.log(f"✗ Error al hacer clic en enviar: {e}", 'error')
-                            return False, False
-                    else:
-                        self.log(f"{log_prefix} ✗ No se encontró el botón de enviar (SMS/RCS).", 'error')
-                        self.log("  └─ Asegúrate de usar Google Messages o Samsung Messages.", 'warning')
+                        self.log(f"✓ {log_prefix} :: SMS Enviado (Enter)", 'success')
+                        self._controlled_sleep(1.5)
+                        return True, False
+                    except Exception as e:
+                        self.log(f"Fallo al enviar con Enter: {e}", 'error')
                         return False, False
 
                 # --- MODO WHATSAPP (Lógica original) ---

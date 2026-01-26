@@ -8296,17 +8296,27 @@ class Hermes:
                     # 1. Asegurar pantalla encendida
                     self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=5)
 
-                    # 2. Inyectar URL para abrir el mensaje (Forzando categoría APP_MESSAGING)
-                    # Se añade '-c android.intent.category.APP_MESSAGING' para evitar que WhatsApp intercepte el link.
-                    open_args = [
+                    # 2. Inyectar URL para abrir el mensaje
+                    # Intentar abrir con TEXTRA explícitamente primero (para evitar WhatsApp)
+                    open_args_textra = [
                         '-s', device, 'shell', 'am', 'start',
                         '-a', 'android.intent.action.VIEW',
-                        '-c', 'android.intent.category.APP_MESSAGING',
+                        '-p', 'com.textra',
                         '-d', f'"{current_link}"'
                     ]
-                    if not self._run_adb_command(open_args, timeout=15):
-                        self.log(f"{log_prefix} ✗ Error al abrir la App de SMS.", 'error')
-                        return False, False
+
+                    if not self._run_adb_command(open_args_textra, timeout=15):
+                        self.log(f"{log_prefix} ⚠ Textra no abrió, intentando método genérico...", 'warning')
+
+                        # Fallback: Método genérico sin categoría estricta (si falla Textra)
+                        open_args_generic = [
+                            '-s', device, 'shell', 'am', 'start',
+                            '-a', 'android.intent.action.VIEW',
+                            '-d', f'"{current_link}"'
+                        ]
+                        if not self._run_adb_command(open_args_generic, timeout=15):
+                            self.log(f"{log_prefix} ✗ Error al abrir la App de SMS (fallaron Textra y Genérico).", 'error')
+                            return False, False
                     
                     # 3. Esperar tiempo de estabilización (configurado por usuario)
                     try:

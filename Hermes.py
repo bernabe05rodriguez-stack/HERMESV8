@@ -8296,8 +8296,14 @@ class Hermes:
                     # 1. Asegurar pantalla encendida
                     self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=5)
 
-                    # 2. Inyectar URL para abrir el mensaje
-                    open_args = ['-s', device, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', f'"{current_link}"']
+                    # 2. Inyectar URL para abrir el mensaje (Forzando categoría APP_MESSAGING)
+                    # Se añade '-c android.intent.category.APP_MESSAGING' para evitar que WhatsApp intercepte el link.
+                    open_args = [
+                        '-s', device, 'shell', 'am', 'start',
+                        '-a', 'android.intent.action.VIEW',
+                        '-c', 'android.intent.category.APP_MESSAGING',
+                        '-d', f'"{current_link}"'
+                    ]
                     if not self._run_adb_command(open_args, timeout=15):
                         self.log(f"{log_prefix} ✗ Error al abrir la App de SMS.", 'error')
                         return False, False

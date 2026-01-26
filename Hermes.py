@@ -8001,6 +8001,30 @@ class Hermes:
             self.log(f"Error inesperado ejecutando ADB: {e}", 'error')
             return False
 
+    def _get_current_focus(self, device):
+        """Obtiene la salida de mCurrentFocus para verificar si la app abrió."""
+        try:
+            adb = self.adb_path.get()
+            # Ejecutamos directamente, adb shell concatena los argumentos
+            cmd = [adb, '-s', device, 'shell', 'dumpsys window | grep mCurrentFocus']
+
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=4,
+                startupinfo=si,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            return result.stdout.strip()
+        except Exception:
+            return ""
+
     def _controlled_sleep(self, duration):
         """Realiza una espera respetando pausas y cancelaciones."""
         try:
@@ -8293,27 +8317,56 @@ class Hermes:
                     # 1. (Se omite KEYCODE_WAKEUP para evitar interacciones extra en el menú)
                     # El dispositivo ya fue limpiado por close_all_apps().
 
-                    # 2. Inyectar URL para abrir el mensaje (Método Genérico, sin forzar Textra)
-                    # Se agregan flags para forzar nueva tarea y limpiar top, asegurando que se abra
+                    # 2. Inyectar URL con RETRY (Fix "Pantalla en blanco/Launcher")
                     open_args_generic = [
                         '-s', device, 'shell', 'am', 'start',
                         '-a', 'android.intent.action.VIEW',
-                        '-f', '0x14000000', # FLAG_ACTIVITY_NEW_TASK (0x10000000) | FLAG_ACTIVITY_CLEAR_TOP (0x4000000)
+                        '-f', '0x14000000', # FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TOP
                         '-d', f'"{current_link}"'
                     ]
 
-                    if not self._run_adb_command(open_args_generic, timeout=15):
-                        self.log(f"{log_prefix} ✗ Error al abrir la App de SMS.", 'error')
-                        return False, False
+                    sms_injection_success = False
+                    for retry_idx in range(3):
+                        if self.should_stop: return False, False
+
+                        if retry_idx > 0:
+                            self.log(f"Reintentando inyección SMS ({retry_idx+1}/3)...", 'warning')
+                            # En reintentos, probamos despertar pantalla
+                            self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=2)
+
+                        if not self._run_adb_command(open_args_generic, timeout=15):
+                            self.log(f"{log_prefix} ✗ Error al ejecutar comando de apertura SMS.", 'error')
+
+                        # Esperar un poco para verificar foco
+                        self._controlled_sleep(2.0)
+
+                        # Verificar foco
+                        focus = self._get_current_focus(device).lower()
+                        # Si contiene "launcher", "home" o está vacía, asumimos fallo
+                        if not focus or "launcher" in focus or "home" in focus or "recents" in focus:
+                            self.log(f"Detectado foco en Launcher/Home ({focus[:50]}...). La app no abrió.", 'warning')
+                            continue # Reintentar loop
+
+                        # Si llegamos aquí, NO estamos en el launcher (asumimos éxito)
+                        sms_injection_success = True
+                        break
                     
+                    if not sms_injection_success:
+                        self.log(f"{log_prefix} ✗ Fallo: El dispositivo se quedó en el Launcher tras 3 intentos.", 'error')
+                        return False, False
+
                     # 3. Esperar tiempo de estabilización (configurado por usuario)
                     try:
-                        wait_send = max(1.0, float(self.wait_after_first_enter.get()))
+                        user_wait = max(1.0, float(self.wait_after_first_enter.get()))
                     except:
-                        wait_send = 2.0
+                        user_wait = 2.0
 
-                    self.log(f"Esperando {wait_send}s para cargar App de SMS...", 'info')
-                    self._controlled_sleep(wait_send)
+                    # Restamos los 2s que ya esperamos, si queda algo
+                    remaining_wait = max(0.0, user_wait - 2.0)
+
+                    if remaining_wait > 0:
+                         self.log(f"Esperando {remaining_wait:.1f}s extra...", 'info')
+                         self._controlled_sleep(remaining_wait)
 
                     if self.should_stop: return False, False
 

@@ -8284,6 +8284,10 @@ class Hermes:
         """Ejecuta los comandos para enviar un único mensaje."""
         is_group = bool(message_to_send)
         try:
+            # Asegurar pantalla encendida (Wakeup no apaga si ya está encendido)
+            self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=5)
+            self._controlled_sleep(1.0)
+
             if not ui_device and not self.sms_mode_active:
                 self.log("✗ Error crítico: la conexión de uiautomator2 no está disponible.", "error")
                 return False

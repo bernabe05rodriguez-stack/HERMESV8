@@ -8294,9 +8294,11 @@ class Hermes:
                     # El dispositivo ya fue limpiado por close_all_apps().
 
                     # 2. Inyectar URL para abrir el mensaje (Método Genérico, sin forzar Textra)
+                    # Se agregan flags para forzar nueva tarea y limpiar top, asegurando que se abra
                     open_args_generic = [
                         '-s', device, 'shell', 'am', 'start',
                         '-a', 'android.intent.action.VIEW',
+                        '-f', '0x14000000', # FLAG_ACTIVITY_NEW_TASK (0x10000000) | FLAG_ACTIVITY_CLEAR_TOP (0x4000000)
                         '-d', f'"{current_link}"'
                     ]
 

@@ -5283,14 +5283,15 @@ class Hermes:
             skip_delay (bool): Si es True, omite el retardo posterior al envío (útil para modo simultáneo).
         """
         ui_device = None
-        # --- MODIFICACIÓN: Siempre intentar conectar uiautomator2 ---
-        try:
-            ui_device = u2.connect(device)
-            ui_device.unlock()
-        except Exception as e:
-            self.log(f"No se pudo conectar uiautomator2 a {device}: {e}", "warning")
-            # En este nuevo enfoque, un fallo aquí debería ser crítico.
-            return False
+        # --- MODIFICACIÓN: Siempre intentar conectar uiautomator2 (EXCEPTO EN SMS) ---
+        if not self.sms_mode_active:
+            try:
+                ui_device = u2.connect(device)
+                ui_device.unlock()
+            except Exception as e:
+                self.log(f"No se pudo conectar uiautomator2 a {device}: {e}", "warning")
+                # En este nuevo enfoque, un fallo aquí debería ser crítico.
+                return False
 
         # Bucle de pausa
         while self.is_paused and not self.should_stop:
@@ -8259,7 +8260,7 @@ class Hermes:
         """Ejecuta los comandos para enviar un único mensaje."""
         is_group = bool(message_to_send)
         try:
-            if not ui_device:
+            if not ui_device and not self.sms_mode_active:
                 self.log("✗ Error crítico: la conexión de uiautomator2 no está disponible.", "error")
                 return False
 
@@ -8289,8 +8290,8 @@ class Hermes:
 
                 # --- MODO SMS OPTIMIZADO ---
                 if local_is_sms:
-                    # 1. Asegurar pantalla encendida
-                    self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=5)
+                    # 1. (Se omite KEYCODE_WAKEUP para evitar interacciones extra en el menú)
+                    # El dispositivo ya fue limpiado por close_all_apps().
 
                     # 2. Inyectar URL para abrir el mensaje (Método Genérico, sin forzar Textra)
                     open_args_generic = [

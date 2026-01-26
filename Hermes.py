@@ -7392,10 +7392,6 @@ class Hermes:
             self.log(f"[{device}] Colgando...", 'info')
             self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_ENDCALL'], timeout=5)
 
-            # 4. Cerrar ventana / Ir a inicio (para limpiar)
-            time.sleep(1)
-            self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_HOME'], timeout=5)
-
         except Exception as e:
             self.log(f"[{device}] Excepción en _perform_call: {e}", 'error')
 
@@ -8296,27 +8292,16 @@ class Hermes:
                     # 1. Asegurar pantalla encendida
                     self._run_adb_command(['-s', device, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'], timeout=5)
 
-                    # 2. Inyectar URL para abrir el mensaje
-                    # Intentar abrir con TEXTRA explícitamente primero (para evitar WhatsApp)
-                    open_args_textra = [
+                    # 2. Inyectar URL para abrir el mensaje (Método Genérico, sin forzar Textra)
+                    open_args_generic = [
                         '-s', device, 'shell', 'am', 'start',
                         '-a', 'android.intent.action.VIEW',
-                        '-p', 'com.textra',
                         '-d', f'"{current_link}"'
                     ]
 
-                    if not self._run_adb_command(open_args_textra, timeout=15):
-                        self.log(f"{log_prefix} ⚠ Textra no abrió, intentando método genérico...", 'warning')
-
-                        # Fallback: Método genérico sin categoría estricta (si falla Textra)
-                        open_args_generic = [
-                            '-s', device, 'shell', 'am', 'start',
-                            '-a', 'android.intent.action.VIEW',
-                            '-d', f'"{current_link}"'
-                        ]
-                        if not self._run_adb_command(open_args_generic, timeout=15):
-                            self.log(f"{log_prefix} ✗ Error al abrir la App de SMS (fallaron Textra y Genérico).", 'error')
-                            return False, False
+                    if not self._run_adb_command(open_args_generic, timeout=15):
+                        self.log(f"{log_prefix} ✗ Error al abrir la App de SMS.", 'error')
+                        return False, False
                     
                     # 3. Esperar tiempo de estabilización (configurado por usuario)
                     try:
@@ -8329,20 +8314,15 @@ class Hermes:
 
                     if self.should_stop: return False, False
 
-                    # 4. ESTRATEGIA SOLICITADA: Usar ENTER para enviar
-                    # El usuario solicitó explícitamente "cambia que en vez de enviar apretar ENTER nada mas".
+                    # 4. Enviar vía ENTER (KEYCODE_66) - UNA VEZ
                     self.log(f"Enviando vía ENTER (KEYCODE_66)...", 'info')
 
                     try:
-                        # Enviamos ENTER dos veces por seguridad (algunos teclados requieren confirmación o foco)
-                        # KEYCODE_ENTER = 66
                         cmd_enter = ['-s', device, 'shell', 'input', 'keyevent', '66']
                         self._run_adb_command(cmd_enter, timeout=5)
-                        self._controlled_sleep(0.3)
-                        self._run_adb_command(cmd_enter, timeout=5) # Segundo enter de remate
+                        # Sin segundo enter, sin esperas adicionales innecesarias
 
                         self.log(f"✓ {log_prefix} :: SMS Enviado (Enter)", 'success')
-                        self._controlled_sleep(1.5)
                         return True, False
                     except Exception as e:
                         self.log(f"Fallo al enviar con Enter: {e}", 'error')

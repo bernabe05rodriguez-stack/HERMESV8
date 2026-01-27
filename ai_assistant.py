@@ -255,7 +255,6 @@ class SmartDeviceController:
         for step in range(max_steps):
             # Verificar si se solicitó detener
             if self.stop_requested:
-                self.stop_requested = False
                 self._feedback("⏹️ Detenido por usuario")
                 return "Detenido por usuario", False
             
@@ -1423,6 +1422,10 @@ class AIAssistant:
             return [("Sin controlador de dispositivo", False)]
         
         for action in actions:
+            if self.device_controller.stop_requested:
+                results.append(("Detenido por usuario", False))
+                break
+
             action_type = action.get('type', '')
             params = action.get('params', {})
             

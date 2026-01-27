@@ -10343,9 +10343,9 @@ class Hermes:
         """Abre la ventana de configuración de la IA."""
         config_window = ctk.CTkToplevel(self.root)
         config_window.title("Configuración de Talaria")
-        config_window.geometry("450x250")  # Reduced height
+        config_window.geometry("450x380")  # Increased height
         config_window.attributes('-topmost', True)
-        self._center_toplevel(config_window, 450, 250)
+        self._center_toplevel(config_window, 450, 380)
         
         # Frame principal
         main_frame = ctk.CTkFrame(config_window, fg_color=self.colors['bg_card'])

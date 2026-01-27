@@ -127,6 +127,15 @@ class SmartDeviceController:
         self.u2_devices = {}  # Cache de conexiones u2
         self.ai_client = ai_client  # Cliente OpenAI para toma de decisiones
         self.stop_requested = False  # Flag para detener ejecución
+        self.thread_local = threading.local() # Almacenamiento local del hilo para contexto de dispositivo
+
+    def set_current_device(self, device):
+        """Establece el dispositivo actual para el hilo en ejecución"""
+        self.thread_local.device = device
+
+    def reset_stop(self):
+        """Resetea la bandera de parada"""
+        self.stop_requested = False
         
     def set_feedback_callback(self, callback):
         """Configura callback para feedback en tiempo real"""
@@ -134,9 +143,13 @@ class SmartDeviceController:
         
     def _feedback(self, message, status="info"):
         """Envía feedback en tiempo real"""
+        device = getattr(self.thread_local, 'device', '')
+        prefix = f"[{device}] " if device else ""
+        full_message = f"{prefix}{message}"
+
         if self.feedback_callback:
-            self.feedback_callback(message, status)
-        self.log(message, status)
+            self.feedback_callback(full_message, status)
+        self.log(full_message, status)
     
     def _run_adb(self, args, device=None, timeout=15):
         """Ejecuta un comando ADB"""
@@ -251,7 +264,7 @@ class SmartDeviceController:
         for step in range(max_steps):
             # Verificar si se solicitó detener
             if self.stop_requested:
-                self.stop_requested = False
+                # self.stop_requested = False # NO resetear aquí para permitir parada en paralelo
                 self._feedback("⏹️ Detenido por usuario")
                 return "Detenido por usuario", False
             
@@ -1418,7 +1431,15 @@ class AIAssistant:
         if not self.device_controller:
             return [("Sin controlador de dispositivo", False)]
         
+        # Establecer contexto de dispositivo para el hilo actual
+        self.device_controller.set_current_device(device)
+
         for action in actions:
+            # Verificar si se solicitó detener
+            if self.device_controller.stop_requested:
+                results.append(("Detenido por usuario", False))
+                break
+
             action_type = action.get('type', '')
             params = action.get('params', {})
             

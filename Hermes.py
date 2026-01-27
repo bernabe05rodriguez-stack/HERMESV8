@@ -1931,7 +1931,12 @@ class Hermes:
         return badge_frame
 
     def log(self, msg, tag='info'):
-        """Añade un mensaje al registro de actividad con formato."""
+        """Añade un mensaje al registro de actividad con formato (Thread-safe)."""
+        # Si no estamos en el hilo principal, programar la ejecución en el main loop
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, lambda: self.log(msg, tag))
+            return
+
         ts = datetime.now().strftime("[%H:%M:%S]")
         icon = "✓"
         add_space_before = False
@@ -9528,6 +9533,10 @@ class Hermes:
         # Mostrar indicador de "escribiendo..."
         typing_msg = self._show_typing_indicator()
         
+        # Resetear bandera de parada antes de iniciar
+        if self.ai_assistant and self.ai_assistant.device_controller:
+            self.ai_assistant.device_controller.reset_stop()
+
         # Procesar en hilo separado para no bloquear la UI
         def process_async():
             try:
@@ -9599,23 +9608,31 @@ class Hermes:
             
             def execute_async():
                 all_results = []
+                threads = []
                 
-                # Ejecutar SECUENCIALMENTE para evitar conflictos entre dispositivos
-                for device in target_devices:
-                    short_id = device[:8] + "..." if len(device) > 10 else device
-                    self.root.after(0, lambda d=short_id: self._add_ai_message(f"📱 Ejecutando en [{d}]...", is_user=False))
+                # Función wrapper para ejecutar en cada hilo
+                def run_device_task(dev):
+                    short_id = dev[:8] + "..." if len(dev) > 10 else dev
+                    # Usar root.after para actualizar UI desde el hilo
+                    self.root.after(0, lambda d=short_id: self._add_ai_message(f"📱 Iniciando en [{d}]...", is_user=False))
                     
                     try:
-                        results = self.ai_assistant.execute_actions(actions, device)
+                        results = self.ai_assistant.execute_actions(actions, dev)
                         for msg, success in results:
-                            all_results.append((device, msg, success))
-                        
-                        # Pequeña pausa entre dispositivos para estabilidad
-                        import time
-                        time.sleep(0.5)
-                        
+                            # Append es atómico en CPython (thread-safe para listas simples)
+                            all_results.append((dev, msg, success))
                     except Exception as e:
-                        all_results.append((device, f"Error: {e}", False))
+                        all_results.append((dev, f"Error: {e}", False))
+
+                # Lanzar hilos en PARALELO
+                for device in target_devices:
+                    t = threading.Thread(target=run_device_task, args=(device,))
+                    t.start()
+                    threads.append(t)
+
+                # Esperar a que todos terminen
+                for t in threads:
+                    t.join()
                 
                 # Reportar resultados finales
                 def show_results():

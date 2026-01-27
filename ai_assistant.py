@@ -12,12 +12,8 @@ import subprocess
 import os
 import threading
 
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-    genai = None
+GEMINI_AVAILABLE = False
+genai = None
 
 try:
     from openai import OpenAI

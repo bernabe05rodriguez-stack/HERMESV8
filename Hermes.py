@@ -1615,7 +1615,7 @@ class Hermes:
         self.activity_table.configure(yscrollcommand=self.activity_table_scrollbar.set)
         self.activity_table_scrollbar.grid(row=0, column=1, sticky="ns")
 
-        self.log_text.configure(state=tk.DISABLED)
+        self.log_text.text.configure(state=tk.DISABLED)
         self.log("HΞЯMΞS V1 (Modern) iniciado", 'success')
         self.log("Sigue los pasos 1, 2, 3 en orden", 'info')
         if self.adb_path.get():
@@ -1647,7 +1647,7 @@ class Hermes:
     def _redraw_log(self):
         """Limpia y vuelve a dibujar el contenido del log desde el historial."""
         try:
-            self.log_text.configure(state=tk.NORMAL)
+            self.log_text.text.configure(state=tk.NORMAL)
             self.log_text.delete("1.0", tk.END)
 
             is_first_line = True
@@ -1668,7 +1668,7 @@ class Hermes:
                 self.log_text.insert(tk.END, display_msg + "\n", tag)
                 is_first_line = False
 
-            self.log_text.configure(state=tk.DISABLED)
+            self.log_text.text.configure(state=tk.DISABLED)
             self.log_text.see(tk.END)
         except tk.TclError:
             pass
@@ -2041,7 +2041,7 @@ class Hermes:
                 # El mensaje debe ocultarse en la vista simple, no hacer nada
                 return
 
-            self.log_text.configure(state=tk.NORMAL)
+            self.log_text.text.configure(state=tk.NORMAL)
 
             # Heurística para añadir espacio antes de mensajes importantes
             add_space_before = False
@@ -2055,7 +2055,7 @@ class Hermes:
                 self.log_text.insert(tk.END, "\n")
 
             self.log_text.insert(tk.END, display_msg + "\n", tag)
-            self.log_text.configure(state=tk.DISABLED)
+            self.log_text.text.configure(state=tk.DISABLED)
             self.log_text.see(tk.END)
 
             self.root.update_idletasks()

@@ -9715,10 +9715,15 @@ class Hermes:
         
         # Inicializar asistente
         adb_path = self.adb_path.get()
+
+        # Wrapper thread-safe para el log para evitar problemas con hilos paralelos
+        def thread_safe_log(msg, status="info"):
+            self.root.after(0, lambda: self.log(msg, status))
+
         self.ai_assistant = AIAssistant(
             api_key=self.ai_api_key if self.ai_api_key else None,
             adb_path=adb_path,
-            log_callback=self.log
+            log_callback=thread_safe_log
         )
         
         # Crear la burbuja flotante de IA
@@ -10232,22 +10237,33 @@ class Hermes:
             def execute_async():
                 all_results = []
                 
-                # Ejecutar SECUENCIALMENTE para evitar conflictos entre dispositivos
-                for device in target_devices:
+                # Ejecutar EN PARALELO para mayor velocidad
+                import concurrent.futures
+
+                def process_device(device):
                     short_id = device[:8] + "..." if len(device) > 10 else device
                     self.root.after(0, lambda d=short_id: self._add_ai_message(f"📱 Ejecutando en [{d}]...", is_user=False))
                     
+                    device_results = []
                     try:
                         results = self.ai_assistant.execute_actions(actions, device)
                         for msg, success in results:
-                            all_results.append((device, msg, success))
-                        
-                        # Pequeña pausa entre dispositivos para estabilidad
-                        import time
-                        time.sleep(0.5)
-                        
+                            device_results.append((device, msg, success))
                     except Exception as e:
-                        all_results.append((device, f"Error: {e}", False))
+                        device_results.append((device, f"Error: {e}", False))
+                    return device_results
+
+                # Usar ThreadPoolExecutor para ejecutar en paralelo
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(target_devices)) as executor:
+                    future_to_device = {executor.submit(process_device, dev): dev for dev in target_devices}
+
+                    for future in concurrent.futures.as_completed(future_to_device):
+                        try:
+                            results = future.result()
+                            all_results.extend(results)
+                        except Exception as e:
+                            # Loguear si hubo un crash en el hilo
+                            print(f"Thread exception: {e}")
                 
                 # Reportar resultados finales
                 def show_results():

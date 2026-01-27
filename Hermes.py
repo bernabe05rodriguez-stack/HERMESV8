@@ -10164,9 +10164,9 @@ class Hermes:
         """Abre la ventana de configuración de la IA."""
         config_window = ctk.CTkToplevel(self.root)
         config_window.title("Configuración de Talaria")
-        config_window.geometry("450x300")
+        config_window.geometry("450x250")  # Reduced height
         config_window.attributes('-topmost', True)
-        self._center_toplevel(config_window, 450, 300)
+        self._center_toplevel(config_window, 450, 250)
         
         # Frame principal
         main_frame = ctk.CTkFrame(config_window, fg_color=self.colors['bg_card'])
@@ -10176,19 +10176,19 @@ class Hermes:
         title = ctk.CTkLabel(
             main_frame,
             text="🔧 Configuración de Talaria (OpenAI)",
-            font=('Inter', 18, 'bold'),
+            font=('Inter', 16, 'bold'), # Slightly smaller
             text_color=self.colors['text']
         )
-        title.pack(pady=(10, 20))
+        title.pack(pady=(10, 10)) # Reduced padding
         
         # API Key
         api_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        api_frame.pack(fill='x', padx=20, pady=10)
+        api_frame.pack(fill='x', padx=20, pady=5) # Reduced padding
         
         api_label = ctk.CTkLabel(
             api_frame,
             text="API Key de OpenAI:",
-            font=('Inter', 13),
+            font=('Inter', 12),
             text_color=self.colors['text']
         )
         api_label.pack(anchor='w')
@@ -10197,10 +10197,10 @@ class Hermes:
             api_frame,
             placeholder_text="Ingresa tu API key...",
             font=('Inter', 12),
-            height=40,
+            height=35, # Slightly smaller
             show="•"
         )
-        api_entry.pack(fill='x', pady=(5, 0))
+        api_entry.pack(fill='x', pady=(2, 0)) # Reduced padding
         
         if self.ai_api_key:
             api_entry.insert(0, self.ai_api_key)
@@ -10213,7 +10213,7 @@ class Hermes:
             text_color="#7C3AED",
             cursor="hand2"
         )
-        link_label.pack(pady=10)
+        link_label.pack(pady=5) # Reduced padding
         link_label.bind("<Button-1>", lambda e: os.startfile("https://platform.openai.com/api-keys"))
         
         # Estado actual
@@ -10224,7 +10224,7 @@ class Hermes:
             font=('Inter', 12),
             text_color=self.colors['text_light']
         )
-        status_label.pack(pady=10)
+        status_label.pack(pady=5) # Reduced padding
         
         # Botón guardar
         def save_config():
@@ -10243,27 +10243,38 @@ class Hermes:
                 # Reconfigurar asistente
                 if self.ai_assistant:
                     adb_path = self.adb_path.get()
-                    self.ai_assistant.configure(new_key, adb_path)
-                    
-                    if self.ai_assistant.is_configured:
-                        messagebox.showinfo("Éxito", "¡Talaria configurada correctamente! 🎉")
-                        config_window.destroy()
-                    else:
-                        messagebox.showerror("Error", "No se pudo configurar OpenAI. Verifica tu API key y conexión.")
+                    try:
+                        self.ai_assistant.configure(new_key, adb_path)
+
+                        if self.ai_assistant.is_configured:
+                            messagebox.showinfo("Éxito", "¡Talaria configurada correctamente! 🎉", parent=config_window)
+                            config_window.destroy()
+                        else:
+                            # Try to get the last error if possible, or show generic
+                            messagebox.showerror("Error de Configuración",
+                                "No se pudo conectar con OpenAI.\n\n"
+                                "Posibles causas:\n"
+                                "1. API Key inválida o mal copiada.\n"
+                                "2. Cuenta sin saldo/créditos (incluso si es nueva).\n"
+                                "3. Problemas de conexión a internet.\n\n"
+                                "Verifica tu clave en platform.openai.com",
+                                parent=config_window)
+                    except Exception as e:
+                        messagebox.showerror("Error Crítico", f"Ocurrió un error al configurar:\n{str(e)}", parent=config_window)
             else:
-                messagebox.showwarning("Atención", "Por favor, ingresa una API key.")
+                messagebox.showwarning("Atención", "Por favor, ingresa una API key.", parent=config_window)
         
         save_btn = ctk.CTkButton(
             main_frame,
             text="💾 Guardar",
             font=('Inter', 14, 'bold'),
-            height=45,
+            height=40, # Slightly smaller
             corner_radius=10,
             fg_color="#7C3AED",
             hover_color="#6D28D9",
             command=save_config
         )
-        save_btn.pack(pady=20)
+        save_btn.pack(pady=10) # Reduced padding
 
 # --- Main ---
 def main():

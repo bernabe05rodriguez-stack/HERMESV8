@@ -34,8 +34,8 @@ except Exception:
             pass
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from ttkbootstrap.tooltip import ToolTip
-from ttkbootstrap.scrolled import ScrolledText, ScrolledFrame
+from ttkbootstrap.widgets import ToolTip
+from ttkbootstrap.widgets.scrolled import ScrolledText, ScrolledFrame
 import tkinter.font as tkfont
 # import tkinter.ttk as ttk # Replaced by ttkbootstrap
 from tkinter import filedialog, messagebox
@@ -452,7 +452,7 @@ class Hermes:
             "Programa pensado y creado por \n"
             "BERNABE GABRIEL RODRIGUEZ, y FRANCISCO JOSE RODRIGUEZ."
         )
-        self.hermes_tooltip = Tooltip(self.header_title_label, text=tooltip_text, bootstyle="info")
+        self.hermes_tooltip = ToolTip(self.header_title_label, text=tooltip_text, bootstyle="info")
 
         # 2. Contenedor principal scrollable
         self.main_content_frame = ttk.Frame(self.root)
@@ -9222,7 +9222,7 @@ class Hermes:
         )
         self.ai_bubble_btn.pack(expand=True)
         
-        Tooltip(self.ai_bubble_btn, "Talaria - Asistente de IA\nHaz clic para abrir el chat", bootstyle="info")
+        ToolTip(self.ai_bubble_btn, text="Talaria - Asistente de IA\nHaz clic para abrir el chat", bootstyle="info")
         
         # self._animate_bubble_pulse() # Skip complex animation for now on ttk
 
@@ -9242,7 +9242,7 @@ class Hermes:
         )
         self.shortcuts_bubble_btn.pack(expand=True)
         
-        Tooltip(self.shortcuts_bubble_btn, "Atajos de Teclado", bootstyle="info")
+        ToolTip(self.shortcuts_bubble_btn, text="Atajos de Teclado", bootstyle="info")
         self.shortcuts_panel_visible = False
         self.shortcuts_panel = None
 
@@ -9380,7 +9380,7 @@ class Hermes:
             width=3
         )
         self.ai_stop_btn.pack(side='right', padx=2)
-        Tooltip(self.ai_stop_btn, "Detener IA", bootstyle="info")
+        ToolTip(self.ai_stop_btn, text="Detener IA", bootstyle="info")
         
         ttk.Button(
             header,

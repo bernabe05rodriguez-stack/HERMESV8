@@ -7111,6 +7111,10 @@ class Hermes:
                         self.log(f"[{dev}] -> Grupo {link.split('/')[-1][:10]} ({w_name})", 'info')
                         self.run_single_task(dev, link, msg, t_idx, whatsapp_package=pkg, skip_delay=True)
 
+                        # Forzar cierre (Ctrl+8 style) tras el envío en este modo
+                        self.log(f"[{dev}] Cerrando apps (Ctrl+8)...", 'info')
+                        self.close_all_apps(dev)
+
                         # Lógica cambio cuenta "Todas"
                         if w_name == "WhatsApp Normal" and self.whatsapp_mode.get() == "Todas":
                              self._switch_account_for_device(dev, delay=0.2)
@@ -8300,10 +8304,14 @@ class Hermes:
 
         return None
 
-    def _wait_for_chat_ready(self, ui_device, wait_time, expected_package=None, is_sms=False, allow_group_join_check=False):
+    def _wait_for_chat_ready(self, ui_device, wait_time, expected_package=None, is_sms=False, allow_group_join_check=False, require_send_button=True):
         """
         Espera a que WhatsApp/SMS esté listo para escribir y devuelve los objetos de la UI.
         Retorna (chat_field, send_button) si tiene éxito, o (None, None) si falla.
+
+        Args:
+            require_send_button: Si es False, permite retornar éxito si se encuentra el chat_field
+                                 aunque no se encuentre el botón de envío (útil para grupos con micrófono).
         """
         if ui_device is None:
             return None, None
@@ -8326,6 +8334,10 @@ class Hermes:
 
             # Si ya encontramos ambos elementos, el trabajo está hecho.
             if chat_field and send_button:
+                break
+
+            # Si no requerimos botón de envío y ya tenemos el campo, también terminamos
+            if not require_send_button and chat_field:
                 break
 
             # Detectar pantallas de invitación a grupos antes de buscar el chat listo
@@ -8353,7 +8365,7 @@ class Hermes:
             if not chat_field:
                 chat_field = self._locate_chat_field(ui_device, wait_timeout=poll_interval)
 
-            # Buscar el botón de envío si aún no lo tenemos
+            # Buscar el botón de envío si aún no lo tenemos (solo si se requiere o si queremos intentarlo igual)
             if not send_button:
                 button = self._locate_message_send_button(
                     ui_device, is_sms=is_sms, wait_timeout=poll_interval
@@ -8375,13 +8387,16 @@ class Hermes:
                 # Si no se encontró nada o si ya extendimos el tiempo, nos rendimos.
                 break
 
-            # Si aún no hemos encontrado ambos, esperamos un poco antes de volver a intentar
-            if not (chat_field and send_button):
+            # Si aún no hemos encontrado lo necesario, esperamos un poco
+            if not (chat_field and (send_button or not require_send_button)):
                 self._controlled_sleep(poll_interval)
 
-        # Evaluar el resultado final (sin cambios aquí)
-        if chat_field and send_button:
-            self.log("✓ Conversación lista (campo y botón encontrados).", 'success')
+        # Evaluar el resultado final
+        success_condition = (chat_field and send_button) or (not require_send_button and chat_field)
+
+        if success_condition:
+            msg_extra = " (sin botón envío)" if not send_button else ""
+            self.log(f"✓ Conversación lista{msg_extra}.", 'success')
             return chat_field, send_button
 
         # Si falla, registrar el motivo específico
@@ -8392,7 +8407,7 @@ class Hermes:
                 self.log("✗ Chat no listo: No se encontró ni el campo de texto ni el botón de envío.", 'error')
         elif not chat_field:
             self.log("✗ Chat no listo: Se encontró el botón de envío, pero no el campo de texto.", 'error')
-        elif not send_button:
+        elif require_send_button and not send_button:
             self.log("✗ Chat no listo: Se encontró el campo de texto, pero no el botón de envío.", 'error')
 
         return None, None
@@ -8530,15 +8545,21 @@ class Hermes:
                 wait_time = max(0, int(self.wait_after_open.get()))
                 if is_group_flag and "chat.whatsapp.com" in current_link.lower():
                     wait_time += 5
+
+                # Para grupos (o cuando vamos a escribir texto), el botón de envío puede ser un micrófono al inicio.
+                # No requerimos estrictamente el botón de envío (avión) hasta después de escribir.
+                require_send_btn = not is_group_flag
+
                 chat_field, send_button = self._wait_for_chat_ready(
                     ui_device,
                     wait_time,
                     expected_package=active_package,
                     is_sms=False,
                     allow_group_join_check=is_group,
+                    require_send_button=require_send_btn
                 )
 
-                if not chat_field or not send_button:
+                if not chat_field or (require_send_btn and not send_button):
                     self.log(log_prefix, 'error')
                     self.log(f"  └─ Motivo: El chat no estuvo listo para enviar (timeout).", 'error')
                     return False, False

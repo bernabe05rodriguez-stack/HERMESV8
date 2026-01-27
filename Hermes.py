@@ -380,6 +380,7 @@ class Hermes:
         self.sms_simultaneous_mode = tk.BooleanVar(value=False)
         self.sms_enable_call = tk.BooleanVar(value=False)
         self.sms_call_duration = SafeIntVar(value=10)
+        self.sms_manual_reps_var = SafeIntVar(value=1) # NUEVO: Repeticiones manuales
 
         # Variables para el modo Llamadas
         self.calls_delay_min = SafeIntVar(value=5)
@@ -1621,16 +1622,83 @@ class Hermes:
 
             current_row += 1
 
-        # Paso 3: Configuración de tiempos (integrado)
-        step3_row = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
-        step3_row.grid(row=current_row, column=0, sticky="ew", pady=(4, 8))
-        step3_row.grid_columnconfigure(0, weight=0)
-        step3_row.grid_columnconfigure(1, weight=1)
+        # Paso 3: Envío Manual (NUEVO)
+        step3_manual_row = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
+        step3_manual_row.grid(row=current_row, column=0, sticky="ew", pady=(4, 8))
+        step3_manual_row.grid_columnconfigure(0, weight=0)
+        step3_manual_row.grid_columnconfigure(1, weight=1)
 
-        self._create_step_badge(step3_row, 3).grid(row=0, column=0, padx=(0, 12), sticky="n", pady=(4, 0))
+        self._create_step_badge(step3_manual_row, 3).grid(row=0, column=0, padx=(0, 12), sticky="n", pady=(4, 0))
+
+        manual_card = ctk.CTkFrame(
+            step3_manual_row,
+            fg_color=self._section_bg_color(),
+            corner_radius=16,
+            border_width=1,
+            border_color=self._section_border_color()
+        )
+        manual_card.grid(row=0, column=1, sticky="ew")
+        manual_card.grid_columnconfigure(0, weight=1)
+
+        manual_header = ctk.CTkFrame(manual_card, fg_color="transparent")
+        manual_header.pack(fill=tk.X, padx=20, pady=(15, 5))
+
+        ctk.CTkLabel(manual_header, text="Envío Manual (Opcional)", font=self.fonts['card_title'],
+                     text_color=self.colors['text']).pack(side=tk.LEFT)
+        ctk.CTkLabel(manual_header, text="Si se usa, ignora el Excel.", font=self.fonts['setting_label'],
+                     text_color=self.colors['text_light']).pack(side=tk.LEFT, padx=(10, 0))
+
+        manual_body = ctk.CTkFrame(manual_card, fg_color="transparent")
+        manual_body.pack(fill=tk.X, padx=20, pady=(0, 15))
+
+        # Grid para inputs
+        manual_body.grid_columnconfigure(0, weight=1)
+        manual_body.grid_columnconfigure(1, weight=1)
+
+        # Columna Izquierda: Números
+        ctk.CTkLabel(manual_body, text="Números (uno por línea):", font=self.fonts['setting_label'],
+                     text_color=self.colors['text']).grid(row=0, column=0, sticky="w", pady=(0, 5))
+
+        self.sms_manual_numbers_text = ctk.CTkTextbox(
+            manual_body, height=100, font=('Consolas', 12),
+            fg_color=self.colors['bg'], border_width=1, border_color="#cccccc"
+        )
+        self.sms_manual_numbers_text.grid(row=1, column=0, sticky="ew", padx=(0, 10))
+
+        # Columna Derecha: Mensaje y Repeticiones
+        right_col = ctk.CTkFrame(manual_body, fg_color="transparent")
+        right_col.grid(row=1, column=1, sticky="nsew")
+        right_col.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(right_col, text="Mensaje:", font=self.fonts['setting_label'],
+                     text_color=self.colors['text']).pack(anchor="w", pady=(0, 5))
+
+        self.sms_manual_message_text = ctk.CTkTextbox(
+            right_col, height=60, font=('Inter', 12),
+            fg_color=self.colors['bg'], border_width=1, border_color="#cccccc"
+        )
+        self.sms_manual_message_text.pack(fill=tk.X, expand=True)
+
+        reps_frame = ctk.CTkFrame(right_col, fg_color="transparent")
+        reps_frame.pack(fill=tk.X, pady=(10, 0))
+
+        ctk.CTkLabel(reps_frame, text="Mensajes por número:", font=self.fonts['setting_label'],
+                     text_color=self.colors['text']).pack(side=tk.LEFT)
+
+        self._create_spinbox_widget(reps_frame, self.sms_manual_reps_var, min_val=1, max_val=100).pack(side=tk.LEFT, padx=(10, 0))
+
+        current_row += 1
+
+        # Paso 4: Configuración de tiempos (Antiguo Paso 3)
+        step4_row = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
+        step4_row.grid(row=current_row, column=0, sticky="ew", pady=(4, 8))
+        step4_row.grid_columnconfigure(0, weight=0)
+        step4_row.grid_columnconfigure(1, weight=1)
+
+        self._create_step_badge(step4_row, 4).grid(row=0, column=0, padx=(0, 12), sticky="n", pady=(4, 0))
 
         sms_time_card = ctk.CTkFrame(
-            step3_row,
+            step4_row,
             fg_color=self._section_bg_color(),
             corner_radius=16,
             border_width=1,
@@ -1715,12 +1783,12 @@ class Hermes:
 
         current_row += 1
 
-        # Paso 4: Iniciar envío
+        # Paso 5: Iniciar envío (Antiguo Paso 4)
         start_row = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
         start_row.grid(row=current_row, column=0, sticky="ew", pady=(16, 0))
         start_row.grid_columnconfigure(1, weight=1)
 
-        self._create_step_badge(start_row, 4).grid(row=0, column=0, padx=(0, 12))
+        self._create_step_badge(start_row, 5).grid(row=0, column=0, padx=(0, 12))
 
         self.sms_btn_start = ctk.CTkButton(
             start_row,
@@ -4875,6 +4943,66 @@ class Hermes:
         if not self.devices:
             messagebox.showerror("Error", "Paso 1: Detecta al menos un dispositivo.", parent=self.root); return
         
+        # --- NUEVA LÓGICA: Envío Manual SMS ---
+        if self.sms_mode_active and hasattr(self, 'sms_manual_numbers_text'):
+            try:
+                raw_numbers = self.sms_manual_numbers_text.get("1.0", "end-1c").strip()
+            except:
+                raw_numbers = ""
+
+            if raw_numbers:
+                self.log("Detectado envío manual de SMS...", 'info')
+
+                # 1. Obtener números
+                numbers_list = [line.strip() for line in raw_numbers.splitlines() if line.strip()]
+                if not numbers_list:
+                    messagebox.showerror("Error", "No hay números válidos en el campo manual.", parent=self.root)
+                    return
+
+                # 2. Obtener mensaje
+                try:
+                    raw_msg = self.sms_manual_message_text.get("1.0", "end-1c").strip()
+                except:
+                    raw_msg = ""
+
+                if not raw_msg:
+                    messagebox.showerror("Error", "El campo de mensaje manual está vacío.", parent=self.root)
+                    return
+
+                # 3. Obtener repeticiones
+                try:
+                    reps = max(1, self.sms_manual_reps_var.get())
+                except:
+                    reps = 1
+
+                # 4. Generar links internos
+                manual_links = []
+                encoded_msg = urllib.parse.quote(raw_msg)
+
+                for num in numbers_list:
+                    # Limpieza básica de número (mantener solo dígitos y +)
+                    clean_num = ''.join(filter(lambda x: x.isdigit() or x == '+', num))
+                    if not clean_num: continue
+
+                    link = f"sms:{clean_num}?body={encoded_msg}"
+                    for _ in range(reps):
+                        manual_links.append(link)
+
+                if not manual_links:
+                    messagebox.showerror("Error", "No se pudieron generar enlaces válidos.", parent=self.root)
+                    return
+
+                # 5. Sobrescribir self.links y configurar estado
+                self.links = manual_links
+                self.link_retry_map = {} # No hay alternativos en este modo simple
+                self.total_messages = len(self.links)
+                self.sent_count = 0
+                self.failed_count = 0
+                self.current_index = 0
+                self.update_stats()
+
+                self.log(f"Modo Manual activado: {len(numbers_list)} números x {reps} repeticiones = {self.total_messages} mensajes total.", 'success')
+
         # --- Validación de Tareas ---
         # Modos que NO requieren self.links (se procesan directamente en el hilo)
         modos_sin_links = ["NUMEROS", "NUMEROS_MANUAL", "GRUPOS", "MIXTO"]

@@ -7,3 +7,4 @@ Pillow
 pywinstyles
 google-generativeai
 openai
+ttkbootstrap

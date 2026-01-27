@@ -9984,8 +9984,8 @@ class Hermes:
         if not self.ai_assistant or not self.ai_assistant.is_configured:
             self._add_ai_message(
                 "⚠️ La IA no está configurada.\n\n"
-                "Por favor, haz clic en ⚙️ para agregar tu API key de Gemini.\n\n"
-                "Puedes obtener una gratis en:\nhttps://aistudio.google.com/apikey",
+                "Por favor, haz clic en ⚙️ para agregar tu API key de OpenAI.\n\n"
+                "Puedes obtener una gratis en:\nhttps://platform.openai.com/api-keys",
                 is_user=False
             )
             return

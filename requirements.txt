@@ -6,3 +6,4 @@ pytesseract
 Pillow
 pywinstyles
 google-generativeai
+openai

@@ -32,9 +32,12 @@ except Exception:
             ctypes.windll.user32.SetProcessDPIAware()
         except Exception:
             pass
-import customtkinter as ctk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+from ttkbootstrap.tooltip import ToolTip
+from ttkbootstrap.scrolled import ScrolledText, ScrolledFrame
 import tkinter.font as tkfont
-import tkinter.ttk as ttk
+# import tkinter.ttk as ttk # Replaced by ttkbootstrap
 from tkinter import filedialog, messagebox
 import os
 import threading
@@ -135,49 +138,8 @@ except ImportError:
     print("\n"+"="*50+"\nERROR: Falta 'Pillow'. Ejecuta INSTALAR.bat.\n"+"="*50)
     input("\nEnter para salir...")
     sys.exit(1)
-try:
-    import customtkinter
-except ImportError:
-    print("\n"+"="*50+"\nERROR: Falta 'customtkinter'. Ejecuta INSTALAR.bat.\n"+"="*50)
-    input("\nEnter para salir...")
-    sys.exit(1)
-
-# --- Funciones de color ---
-def _clamp(value):
-    """Asegura que un valor esté entre 0 y 255."""
-    return max(0, min(255, int(value)))
-
-def lighten_color(color, factor=0.1):
-    """Aclara un color hexadecimal."""
-    color = color.lstrip('#')
-    if len(color) == 3:
-        color = "".join([c*2 for c in color])
-    if len(color) != 6:
-        return color
-    try:
-        r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
-    except ValueError:
-        return color
-    r = _clamp(r + (255 - r) * factor)
-    g = _clamp(g + (255 - g) * factor)
-    b = _clamp(b + (255 - b) * factor)
-    return f"#{int(r):02x}{int(g):02x}{int(b):02x}"
-
-def darken_color(color, factor=0.1):
-    """Oscurece un color hexadecimal."""
-    color = color.lstrip('#')
-    if len(color) == 3:
-        color = "".join([c*2 for c in color])
-    if len(color) != 6:
-        return color
-    try:
-        r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
-    except ValueError:
-        return color
-    r = _clamp(r * (1 - factor))
-    g = _clamp(g * (1 - factor))
-    b = _clamp(b * (1 - factor))
-    return f"#{int(r):02x}{int(g):02x}{int(b):02x}"
+# --- Funciones de color (Legacy - eliminadas o simplificadas si se necesitan para algo puntual) ---
+# Se mantienen solo si son necesarias para lógica interna, pero ya no para UI
 
 def format_currency_value(value):
     """Formatea un valor numérico como moneda en formato argentino ($###.###,##)."""
@@ -216,121 +178,13 @@ def format_currency_value(value):
     except Exception:
         return str(value)
 
-# --- INICIO MODIFICACIÓN: Clase para Tooltips (CORREGIDA) ---
-class Tooltip:
-    """
-    Crea un tooltip (mensaje flotante) para un widget de CustomTkinter.
-    Se instancia como: Tooltip(widget, "Texto del tooltip", font_info)
-    """
-    def __init__(self, widget, text, font_info):
-        self.widget = widget
-        self.text = text
-        self.font_info = font_info
-        self.tooltip_window = None
-        self.widget.bind("<Enter>", self.show_tooltip)
-        self.widget.bind("<Leave>", self.hide_tooltip)
-
-    def show_tooltip(self, event): # <--- CORRECCIÓN: Se usa el 'event'
-        if self.tooltip_window:
-            return
-
-        # Crear la ventana Toplevel
-        self.tooltip_window = tk.Toplevel(self.widget)
-        self.tooltip_window.wm_overrideredirect(True) # Sin bordes/barra de título
-
-        # --- INICIO DE LA CORRECCIÓN ---
-        # Usar las coordenadas del mouse (event.x_root) en lugar de
-        # las coordenadas del widget (widget.winfo_rootx()), que
-        # pueden ser incorrectas (0,0) si la ventana se está iniciando.
-        # Se posiciona 15px a la derecha y 10px abajo del cursor.
-        x = event.x_root + 15
-        y = event.y_root + 10
-        # --- FIN DE LA CORRECCIÓN ---
-
-        # Ajustar si se sale de la pantalla (simple check)
-        if x + 400 > self.widget.winfo_screenwidth():
-            x = self.widget.winfo_screenwidth() - 410
-
-        self.tooltip_window.wm_geometry(f"+{int(x)}+{int(y)}")
-
-        # Añadir el label de CustomTkinter dentro
-        label = ctk.CTkLabel(self.tooltip_window,
-                             text=self.text,
-                             font=self.font_info,
-                             fg_color=("#333333", "#444444"), # Color oscuro
-                             text_color="white",
-                             corner_radius=6,
-                             justify='left',
-                             wraplength=400, # Ancho máximo del texto
-                             padx=10, pady=10)
-        label.pack()
-
-        self.tooltip_window.update_idletasks()
-        self.tooltip_window.lift() # Asegurarse de que esté al frente
-
-    def hide_tooltip(self, event): # <--- CORRECCIÓN: Se usa el 'event'
-        if self.tooltip_window:
-            self.tooltip_window.destroy()
-            self.tooltip_window = None
-
-# --- Clase principal de la aplicación ---
-# --- Clase auxiliar para las estrellas ---
-class Star:
-    def __init__(self, w, h):
-        self.w = w
-        self.h = h
-        # Inicializa una estrella en una posición aleatoria (coordenadas polares)
-        self.r = random.uniform(0, w/2)  # Radio (distancia al centro)
-        self.a = random.uniform(0, 2*math.pi)  # Ángulo
-        # Tasa de cambio de radio (velocidad) - Ajustado para pixels/frame visibles (0.5x speed)
-        self.rs = random.uniform(0.1, 0.5)
-        # Tasa de cambio de ángulo (rotación) (0.5x speed)
-        self.ar = random.uniform(0.001, 0.003)
-        self.sz = random.randint(1, 2)  # Tamaño
-
-    def move(self, mx=None, my=None):
-        # Mueve la estrella, aumentando su radio y ángulo
-        self.r += self.rs
-        self.a += self.ar
-
-        # Obtener coordenadas cartesianas actuales
-        cx = self.w/2 + math.cos(self.a) * self.r
-        cy = self.h/2 + math.sin(self.a) * self.r
-
-        # Lógica de atracción del mouse (si está cerca)
-        if mx is not None and my is not None:
-            dx = mx - cx
-            dy = my - cy
-            dist = math.hypot(dx, dy)
-            threshold = 200  # Radio de influencia en píxeles
-
-            if dist < threshold:
-                # Factor de atracción (ajustar para "de a poco")
-                factor = 0.05
-                cx += dx * factor
-                cy += dy * factor
-
-                # Recalcular coordenadas polares basadas en la nueva posición atraída
-                # Esto hace que la animación fluya desde el nuevo punto
-                self.r = math.hypot(cx - self.w/2, cy - self.h/2)
-                self.a = math.atan2(cy - self.h/2, cx - self.w/2)
-
-        # Si la estrella sale del límite, la reinicia al centro
-        if self.r > self.w/2:
-            self.r = 0
-            self.a = random.uniform(0, 2*math.pi)
-
-    def get_coords(self):
-        # Convierte coordenadas polares (r, a) a cartesianas (x, y)
-        x = self.w/2 + math.cos(self.a) * self.r
-        y = self.h/2 + math.sin(self.a) * self.r
-        return x, y, self.sz
+# (Clases Star y Tooltip eliminadas - reemplazadas por TTKBootstrap)
 
 # --- Clase principal de la aplicación ---
 class Hermes:
     def __init__(self, root):
         self.root = root
-        self.root.title("HΞЯMΞS V1")
+        self.root.title("HΞЯMΞS V1 - Modern")
         
         # Obtener tamaño de pantalla actual
         screen_w = self.root.winfo_screenwidth()
@@ -348,23 +202,11 @@ class Hermes:
         # Bind para manejar cambios de monitor
         self.root.bind('<Configure>', self._on_window_configure)
 
-        # Variables para la animación de estrellas
-        self.stars = []
-        self.starfield_running = False
-        self.starfield_canvas = None
-        self.starfield_after_id = None
-        self.mouse_x = None
-        self.mouse_y = None
-        self.mouse_pressed = False
+        # Configuración de estilos TTKBootstrap
+        # Nota: El tema ya se establece en main() al crear root
+        self.style = ttk.Style()
 
-        # Aplicar estilos de Windows 11 si está disponible
-        if pywinstyles:
-            try:
-                pywinstyles.apply_style(self.root, "mica")
-            except Exception as e:
-                print(f"Error aplicando estilo Windows: {e}")
-
-        # Variables de estado
+        # --- Variables de estado del programa ---
         self.adb_path = tk.StringVar(value="")
         self.delay_min = SafeIntVar(value=3)
         self.delay_max = SafeIntVar(value=5)
@@ -480,38 +322,11 @@ class Hermes:
         self.numbers_editor_closed_event = threading.Event()
         self.numbers_editor_closed_event.set()
         self.numbers_editor_start_requested = False
-        self.dark_mode = True  # Estado del modo oscuro (Predeterminado: True)
+        self.dark_mode = False  # Ahora usamos temas de TTK, estado solo para lógica interna si es necesario
 
-        # Paleta de colores
-        self.colors_light = {
-            'blue': '#4285F4', 'green': '#1DB954', 'orange': '#FB923C',
-            'bg': '#e8e8e8', 'bg_card': '#ffffff', 'bg_header': '#ffffff',
-            'bg_log': '#282c34',
-            'log_text': '#abb2bf', 'log_success': '#98c379', 'log_error': '#e06c75',
-            'log_warning': '#d19a66', 'log_info': '#61afef',
-            'text': '#202124', 'text_light': '#5f6368', 'text_header_buttons': '#ffffff', 'text_header': '#000000', 'log_title_color': '#ffffff',
-            'action_detect': '#2563EB', 'action_excel': '#FB923C',
-            'action_mode': '#0EA5E9', 'action_fidelizador': '#111827', 'action_start': '#16A34A',
-            'action_pause': '#FB923C', 'action_cancel': '#DC2626'
-        }
-
-        self.colors_dark = {
-            'blue': '#5B9FFF', 'green': '#1ED760', 'orange': '#FFA45C',
-            'bg': '#000000', 'bg_card': '#1a1a1a', 'bg_header': '#1a1a1a',
-            'bg_log': '#1a1a1a',
-            'log_text': '#ffffff', 'log_success': '#98c379', 'log_error': '#e06c75',
-            'log_warning': '#d19a66', 'log_info': '#61afef',
-            'text': '#ffffff', 'text_light': '#cccccc', 'text_header_buttons': '#ffffff', 'text_header': '#ffffff', 'log_title_color': '#ffffff',
-            'action_detect': '#5B9FFF', 'action_excel': '#FFA45C',
-            'action_mode': '#38BDF8', 'action_fidelizador': '#e4e6eb', 'action_start': '#22C55E',
-            'action_pause': '#FFA45C', 'action_cancel': '#EF4444'
-        }
+        # Paleta de colores (Eliminada - Se usan estilos de TTKBootstrap)
         
-        self.colors = self.colors_dark.copy()
-
-        self.hover_colors = {k: darken_color(v, 0.18) for k, v in self.colors.items() if k.startswith('action_')}
-
-        # Fuentes
+        # Fuentes (Se usan estilos de TTKBootstrap, pero mantenemos algunas refs para canvas si es necesario)
         self.fonts = {
             'header': ('Big Russian', 76, 'bold'),
             'card_title': ('Inter', 18, 'bold'),
@@ -561,8 +376,7 @@ class Hermes:
             self.tutorial_window.focus_force()
             return
 
-        self.tutorial_window = ctk.CTkToplevel(self.root)
-        self.tutorial_window.title("Tutorial")
+        self.tutorial_window = ttk.Toplevel(self.root, title="Tutorial")
         self.tutorial_window.geometry("420x320")
         self.tutorial_window.attributes('-topmost', True)
 
@@ -570,14 +384,10 @@ class Hermes:
         self._center_toplevel(self.tutorial_window, 420, 320)
 
         # Usar un textbox de solo lectura para el contenido
-        textbox = ctk.CTkTextbox(
+        textbox = ScrolledText(
             self.tutorial_window,
             font=('Inter', 14),
-            text_color=self.colors['text'],
-            fg_color=self.colors['bg_card'],
-            wrap="word",
-            corner_radius=0,
-            border_width=0
+            autohide=True
         )
         textbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -588,51 +398,50 @@ class Hermes:
             "3.  Vuelve al buscador, escribe -Depuración por USB- y actívala."
         )
 
-        textbox.insert("0.0", text_content)
-        textbox.configure(state="disabled")
+        textbox.text.insert("0.0", text_content)
+        textbox.text.configure(state="disabled")
 
     def setup_ui(self):
-        # Configurar fondo de la ventana principal
-        self.root.configure(fg_color=self.colors['bg'])
+        # Configurar fondo
+        # TTKBootstrap maneja el fondo con el tema
         
         # 1. Header (Guardado en self.header_frame, NO SE EMPAQUETA AÚN)
-        self.header_frame = ctk.CTkFrame(self.root, fg_color=self.colors['bg_header'], height=140, corner_radius=30)
-        # self.header_frame.pack(fill=tk.X, pady=(10, 10), padx=10) # MOVIDO A enter_app_mode
+        self.header_frame = ttk.Frame(self.root, height=140, padding=10)
         self.header_frame.pack_propagate(False)
 
-        hc = ctk.CTkFrame(self.header_frame, fg_color=self.colors['bg_header'])
+        hc = ttk.Frame(self.header_frame)
         hc.pack(expand=True, fill=tk.X, padx=40)
-
 
         # Logo Izquierdo
         try:
             l_img_path = os.path.join(BASE_DIR, 'logo_left.png')
             l_img = Image.open(l_img_path).resize((150, 150), Image.Resampling.LANCZOS)
-            l_pho = ctk.CTkImage(light_image=l_img, dark_image=l_img, size=(150, 150))
-            self.header_logo_left = ctk.CTkLabel(hc, image=l_pho, text="")
+            l_pho = ImageTk.PhotoImage(l_img)
+            self.header_logo_left = ttk.Label(hc, image=l_pho, text="")
+            self.header_logo_left.image = l_pho
             self.header_logo_left.pack(side=tk.LEFT, padx=(0, 20))
         except Exception as e:
             print(f"Error cargando logo_left: {e}")
-            self.header_logo_left = ctk.CTkLabel(hc, text="🦶", font=('Inter', 60), fg_color="transparent")
+            self.header_logo_left = ttk.Label(hc, text="🦶", font=('Inter', 60))
             self.header_logo_left.pack(side=tk.LEFT, padx=(0, 20))
 
         # Logo Derecho
         try:
             r_img_path = os.path.join(BASE_DIR, 'logo_right.png')
             r_img = Image.open(r_img_path).resize((150, 150), Image.Resampling.LANCZOS)
-            r_pho = ctk.CTkImage(light_image=r_img, dark_image=r_img, size=(150, 150))
-            self.header_logo_right = ctk.CTkLabel(hc, image=r_pho, text="")
+            r_pho = ImageTk.PhotoImage(r_img)
+            self.header_logo_right = ttk.Label(hc, image=r_pho, text="")
+            self.header_logo_right.image = r_pho
             self.header_logo_right.pack(side=tk.RIGHT, padx=(20, 0))
         except Exception as e:
             print(f"Error cargando logo_right: {e}")
-            self.header_logo_right = ctk.CTkLabel(hc, text="🦶", font=('Inter', 60), fg_color="transparent")
+            self.header_logo_right = ttk.Label(hc, text="🦶", font=('Inter', 60))
             self.header_logo_right.pack(side=tk.RIGHT, padx=(20, 0))
 
         # Título
-        self.header_title_label = ctk.CTkLabel(hc, text="HΞЯMΞS", font=self.fonts['header'],
-                                   fg_color="transparent",
-                                   text_color=self.colors['text_header'],
-                                   cursor="hand2") # Añadir cursor para indicar que es interactivo
+        self.header_title_label = ttk.Label(hc, text="HΞЯMΞS", font=self.fonts['header'],
+                                   bootstyle="inverse-light",
+                                   cursor="hand2")
         self.header_title_label.pack(side=tk.LEFT, fill=tk.X, expand=True, anchor='center')
 
         # Tooltip para el título
@@ -643,33 +452,34 @@ class Hermes:
             "Programa pensado y creado por \n"
             "BERNABE GABRIEL RODRIGUEZ, y FRANCISCO JOSE RODRIGUEZ."
         )
-        tooltip_font = self.fonts.get('dialog_text', ('Inter', 12))
-        self.hermes_tooltip = Tooltip(widget=self.header_title_label, text=tooltip_text, font_info=tooltip_font)
+        self.hermes_tooltip = Tooltip(self.header_title_label, text=tooltip_text, bootstyle="info")
 
-        # 2. Contenedor principal scrollable (Guardado en self.main_content_frame)
-        self.main_content_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        # self.main_content_frame.pack(fill=tk.BOTH, expand=True, padx=40, pady=(0, 20)) # MOVIDO
+        # 2. Contenedor principal scrollable
+        self.main_content_frame = ttk.Frame(self.root)
 
-        self.scroll_frame = ctk.CTkScrollableFrame(self.main_content_frame, fg_color="transparent")
+        self.scroll_frame = ScrolledFrame(self.main_content_frame, autohide=True)
         self.scroll_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
-        self.scroll_frame.grid_columnconfigure(0, weight=618, uniform='main_panels')
-        self.scroll_frame.grid_columnconfigure(1, weight=382, uniform='main_panels')
-        self.scroll_frame.grid_rowconfigure(0, weight=1)
+
+        # Access the inner frame for layout configuration
         self.main_layout = self.scroll_frame
+        # Check for container attribute (standard in ttkbootstrap ScrolledFrame)
+        if hasattr(self.scroll_frame, 'container'):
+            self.main_layout = self.scroll_frame.container
+
+        self.main_layout.grid_columnconfigure(0, weight=618, uniform='main_panels')
+        self.main_layout.grid_columnconfigure(1, weight=382, uniform='main_panels')
+        self.main_layout.grid_rowconfigure(0, weight=1)
 
         # 3. Paneles
-        left = ctk.CTkFrame(self.main_layout, fg_color="transparent")
-        right = ctk.CTkFrame(self.main_layout, fg_color="transparent")
+        left = ttk.Frame(self.main_layout)
+        right = ttk.Frame(self.main_layout)
         self.left_panel = left
         self.right_panel = right
         self._current_main_layout = None
 
         self.root.bind("<Configure>", self._on_main_configure)
-        self.setup_right(right) # FIX: Inicializar el panel derecho primero para que exista el log_text
+        self.setup_right(right)
         self.setup_left(left)
-
-        # NO llamar a _update_main_layout todavía porque los widgets no están packeados
-        # self._update_main_layout(self.root.winfo_width())
 
         # Configurar atajos globales
         self.setup_global_shortcuts()
@@ -677,232 +487,132 @@ class Hermes:
         # INICIAR EN EL MENÚ DE INICIO
         self.setup_start_menu()
 
-    def init_starfield(self, width, height, color="white"):
-        """Inicializa las estrellas para la animación y crea sus items en el canvas."""
-        self.stars = []
-        # Limpiar canvas solo de estrellas, por si acaso se llama de nuevo
-        if hasattr(self, 'starfield_canvas') and self.starfield_canvas.winfo_exists():
-            self.starfield_canvas.delete("star")
-
-            for _ in range(500):
-                star = Star(width, height)
-                x, y, sz = star.get_coords()
-                # Crear item en canvas y guardar ID en el objeto Star
-                star.item_id = self.starfield_canvas.create_oval(x, y, x+sz, y+sz, fill=color, outline=color, tags="star")
-                self.stars.append(star)
-
-    def animate_starfield(self):
-        """Actualiza y dibuja el campo de estrellas moviendo los items existentes."""
-        if not self.starfield_running or not self.starfield_canvas or not self.starfield_canvas.winfo_exists():
-            return
-
-        # Obtener dimensiones actuales (por si redimensionan la ventana)
-        w = self.starfield_canvas.winfo_width()
-        h = self.starfield_canvas.winfo_height()
-
-        # Si el canvas es muy pequeño (al iniciar), usar dimensiones por defecto
-        if w < 10 or h < 10:
-            w, h = 1500, 900
-
-        # Mover estrellas existentes (Optimizado: sin delete/create)
-        for star in self.stars:
-            star.w = w  # Actualizar límites por si cambia el tamaño
-            star.h = h
-
-            # Solo aplicar atracción si el mouse está presionado
-            if self.mouse_pressed:
-                star.move(self.mouse_x, self.mouse_y)
-            else:
-                star.move(None, None)
-
-            x, y, sz = star.get_coords()
-
-            if hasattr(star, 'item_id'):
-                self.starfield_canvas.coords(star.item_id, x, y, x+sz, y+sz)
-
-        # Programar siguiente frame (aprox 60 FPS -> 16ms)
-        self.starfield_after_id = self.root.after(20, self.animate_starfield)
-
-    def stop_starfield(self):
-        """Detiene la animación de estrellas."""
-        self.starfield_running = False
-        if self.starfield_after_id:
-            self.root.after_cancel(self.starfield_after_id)
-            self.starfield_after_id = None
+    # (Starfield logic removed for cleaner design)
 
     def setup_start_menu(self):
-        """Crea y muestra el menú de inicio (Diseño Espacial/Minimalista)."""
+        """Crea y muestra el menú de inicio (Diseño Minimalista TTKBootstrap)."""
         if hasattr(self, 'start_menu_frame') and self.start_menu_frame.winfo_exists():
             self.start_menu_frame.pack(fill=tk.BOTH, expand=True)
-            self.starfield_running = True
-            self.animate_starfield()
             return
 
-        # Determinar colores según el modo
-        is_dark = getattr(self, 'dark_mode', False)
-        bg_color = "black" if is_dark else "white"
-        fg_color = "white" if is_dark else "black"
-
-        # Configurar frame principal
-        self.start_menu_frame = ctk.CTkFrame(self.root, fg_color=bg_color)
+        # Frame Principal con padding
+        self.start_menu_frame = ttk.Frame(self.root, padding=20)
         self.start_menu_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Crear Canvas para el fondo de estrellas
-        self.starfield_canvas = tk.Canvas(self.start_menu_frame, bg=bg_color, highlightthickness=0)
-        self.starfield_canvas.place(relwidth=1, relheight=1) # Llenar todo el fondo
+        # Contenedor central
+        center_frame = ttk.Frame(self.start_menu_frame)
+        center_frame.place(relx=0.5, rely=0.5, anchor='center')
 
-        # Inicializar estrellas con dimensiones fijas iniciales
-        init_w = self.root.winfo_width()
-        init_h = self.root.winfo_height()
-        if init_w < 100: init_w = 1500
-        if init_h < 100: init_h = 900
-
-        self.init_starfield(init_w, init_h, color=fg_color)
-        self.starfield_running = True
-        self.animate_starfield()
-
-        # Título principal HHERMES (Agrandado) - Ahora en Canvas
-        header_font = list(self.fonts.get('header', ('Big Russian', 76, 'bold')))
-        header_font[1] = 100 # Aumentar tamaño de fuente
-
-        self.title_text_id = self.starfield_canvas.create_text(
-            0, 0, # Se posiciona en _update_start_menu_layout
-            text="HΞЯMΞS",
-            font=tuple(header_font),
-            fill=fg_color,
-            anchor='center'
-        )
-
-        # Botón Modo Oscuro (Emoji en Canvas)
-        self.dark_mode_text_id = self.starfield_canvas.create_text(
-            0, 0, # Se posiciona en _update_start_menu_layout
-            text="🌙" if is_dark else "☀️",
-            font=('Inter', 34),
-            fill=fg_color,
-            anchor='center'
-        )
-        self.starfield_canvas.tag_bind(self.dark_mode_text_id, "<Button-1>", lambda _event: self.toggle_dark_mode())
-        self.starfield_canvas.tag_bind(self.dark_mode_text_id, "<Enter>", lambda _event: self.starfield_canvas.config(cursor="hand2"))
-        self.starfield_canvas.tag_bind(self.dark_mode_text_id, "<Leave>", lambda _event: self.starfield_canvas.config(cursor=""))
-
-        # --- LOGOS EN CANVAS (Transparencia Real) ---
-
-        # Cargar Imágenes
+        # Título
+        header_font = ("Big Russian", 72, "bold") # Intenta usar la fuente personalizada si está instalada
         try:
-            img_size_normal = (300, 300)
-            img_size_hover = (330, 330)
+            # Fallback si no está la fuente
+            if "Big Russian" not in tkfont.families():
+                header_font = ("Helvetica", 64, "bold")
+        except:
+            pass
 
-            # WSP Images
+        title = ttk.Label(center_frame, text="HΞЯMΞS", font=header_font, bootstyle="inverse-light")
+        # Ajuste dinámico del estilo del título según el tema (simple hack, o usar default)
+        title.pack(pady=(0, 10))
+
+        subtitle = ttk.Label(center_frame, text="Marketing & Automation Solution", font=("Inter", 16), bootstyle="secondary")
+        subtitle.pack(pady=(0, 50))
+
+        # Contenedor de Botones de Acción
+        actions_frame = ttk.Frame(center_frame)
+        actions_frame.pack(pady=20)
+
+        # Cargar imágenes si es posible
+        img_size = (180, 180)
+        self.img_wsp_start = None
+        self.img_sms_start = None
+
+        try:
             wsp_path = os.path.join(BASE_DIR, "WSP alas.png")
             if os.path.exists(wsp_path):
-                pil_wsp = Image.open(wsp_path)
-                self.img_wsp_normal = ImageTk.PhotoImage(pil_wsp.resize(img_size_normal, Image.Resampling.LANCZOS))
-                self.img_wsp_hover = ImageTk.PhotoImage(pil_wsp.resize(img_size_hover, Image.Resampling.LANCZOS))
-            else:
-                self.img_wsp_normal = None
+                pil_wsp = Image.open(wsp_path).resize(img_size, Image.Resampling.LANCZOS)
+                self.img_wsp_start = ImageTk.PhotoImage(pil_wsp)
 
-            # SMS Images
             sms_path = os.path.join(BASE_DIR, "SMS alas.png")
             if os.path.exists(sms_path):
-                pil_sms = Image.open(sms_path)
-                self.img_sms_normal = ImageTk.PhotoImage(pil_sms.resize(img_size_normal, Image.Resampling.LANCZOS))
-                self.img_sms_hover = ImageTk.PhotoImage(pil_sms.resize(img_size_hover, Image.Resampling.LANCZOS))
-            else:
-                self.img_sms_normal = None
+                pil_sms = Image.open(sms_path).resize(img_size, Image.Resampling.LANCZOS)
+                self.img_sms_start = ImageTk.PhotoImage(pil_sms)
+        except Exception:
+            pass
 
-        except Exception as e:
-            print(f"Error cargando imágenes del menú: {e}")
-            self.img_wsp_normal = None
-            self.img_sms_normal = None
-
-        # Crear items en Canvas
-        self.canvas_item_wsp = None
-        self.canvas_item_sms = None
-
-        if self.img_wsp_normal:
-            self.canvas_item_wsp = self.starfield_canvas.create_image(0, 0, image=self.img_wsp_normal, anchor='center')
-            # Bindings WSP
-            self.starfield_canvas.tag_bind(self.canvas_item_wsp, '<Button-1>', lambda e: self.enter_app_mode("whatsapp"))
-            self.starfield_canvas.tag_bind(self.canvas_item_wsp, '<Enter>', lambda e: self._on_hover_start_logo(self.canvas_item_wsp, self.img_wsp_hover))
-            self.starfield_canvas.tag_bind(self.canvas_item_wsp, '<Leave>', lambda e: self._on_leave_start_logo(self.canvas_item_wsp, self.img_wsp_normal))
-
-        if self.img_sms_normal:
-            self.canvas_item_sms = self.starfield_canvas.create_image(0, 0, image=self.img_sms_normal, anchor='center')
-            # Bindings SMS
-            self.starfield_canvas.tag_bind(self.canvas_item_sms, '<Button-1>', lambda e: self.enter_app_mode("sms"))
-            self.starfield_canvas.tag_bind(self.canvas_item_sms, '<Enter>', lambda e: self._on_hover_start_logo(self.canvas_item_sms, self.img_sms_hover))
-            self.starfield_canvas.tag_bind(self.canvas_item_sms, '<Leave>', lambda e: self._on_leave_start_logo(self.canvas_item_sms, self.img_sms_normal))
-
-        # Copyright Text
-        self.copyright_text_id = self.starfield_canvas.create_text(
-            0, 0, # Se posiciona en _update_start_menu_layout
-            text="Copyright © 2025 Hermes Inc. All rights reserved.",
-            font=('Inter', 8),
-            fill=fg_color,
-            anchor='center'
+        # Botón WhatsApp
+        btn_wsp = ttk.Button(
+            actions_frame,
+            text=" WHATSAPP" if not self.img_wsp_start else "",
+            image=self.img_wsp_start if self.img_wsp_start else "",
+            command=lambda: self.enter_app_mode("whatsapp"),
+            bootstyle="success-link", # Estilo link para que parezca botón de imagen o limpio
+            cursor="hand2"
         )
+        if not self.img_wsp_start:
+            btn_wsp.configure(width=15, padding=20)
+        btn_wsp.pack(side=tk.LEFT, padx=40)
 
-        # Bind resize event to center logos
-        self.starfield_canvas.bind('<Configure>', self._update_start_menu_layout)
-        # Bind mouse movement for star attraction
-        self.starfield_canvas.bind('<Motion>', self._on_mouse_move)
-        self.starfield_canvas.bind('<Button-1>', self._on_mouse_down)
-        self.starfield_canvas.bind('<ButtonRelease-1>', self._on_mouse_up)
+        # Label debajo WSP
+        lbl_wsp = ttk.Label(actions_frame, text="WhatsApp Marketing", font=("Inter", 14, "bold"))
+        # Hack para posicionar el label debajo del botón usando grid en vez de pack si fuera necesario,
+        # pero aquí usamos un frame wrapper para cada uno para ser más limpios.
 
-    def _on_mouse_move(self, event):
-        """Actualiza las coordenadas del mouse para la animación de estrellas."""
-        self.mouse_x = event.x
-        self.mouse_y = event.y
+        # Re-haciendo layout con wrappers para titulo debajo
+        btn_wsp.pack_forget()
 
-    def _on_mouse_down(self, event):
-        self.mouse_pressed = True
+        wsp_wrapper = ttk.Frame(actions_frame)
+        wsp_wrapper.pack(side=tk.LEFT, padx=40)
 
-    def _on_mouse_up(self, event):
-        self.mouse_pressed = False
+        btn_wsp = ttk.Button(
+            wsp_wrapper,
+            image=self.img_wsp_start if self.img_wsp_start else "",
+            text="WHATSAPP" if not self.img_wsp_start else "",
+            compound="top",
+            command=lambda: self.enter_app_mode("whatsapp"),
+            bootstyle="link",
+            cursor="hand2"
+        )
+        btn_wsp.pack()
+        ttk.Label(wsp_wrapper, text="WhatsApp", font=("Inter", 14, "bold"), bootstyle="primary").pack(pady=(10,0))
 
-    def _on_hover_start_logo(self, tag, hover_img):
-        """Efecto Hover: Cambia imagen y cursor."""
-        self.starfield_canvas.itemconfig(tag, image=hover_img)
-        self.starfield_canvas.config(cursor="hand2")
+        # Separador vertical (visual)
+        ttk.Separator(actions_frame, orient='vertical').pack(side=tk.LEFT, fill='y', padx=10)
 
-    def _on_leave_start_logo(self, tag, normal_img):
-        """Efecto Leave: Restaura imagen y cursor."""
-        self.starfield_canvas.itemconfig(tag, image=normal_img)
-        self.starfield_canvas.config(cursor="")
+        # Botón SMS
+        sms_wrapper = ttk.Frame(actions_frame)
+        sms_wrapper.pack(side=tk.LEFT, padx=40)
 
-    def _update_start_menu_layout(self, event=None):
-        """Centra los logos en el canvas cuando cambia el tamaño de la ventana."""
-        if not hasattr(self, 'starfield_canvas') or not self.starfield_canvas.winfo_exists():
-            return
+        btn_sms = ttk.Button(
+            sms_wrapper,
+            image=self.img_sms_start if self.img_sms_start else "",
+            text="SMS" if not self.img_sms_start else "",
+            compound="top",
+            command=lambda: self.enter_app_mode("sms"),
+            bootstyle="link",
+            cursor="hand2"
+        )
+        btn_sms.pack()
+        ttk.Label(sms_wrapper, text="SMS Blast", font=("Inter", 14, "bold"), bootstyle="info").pack(pady=(10,0))
 
-        w = self.starfield_canvas.winfo_width()
-        h = self.starfield_canvas.winfo_height()
+        # Footer
+        footer_frame = ttk.Frame(self.start_menu_frame)
+        footer_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=20, padx=20)
 
-        # Posiciones relativas
-        # WSP a la izquierda (35%), SMS a la derecha (65%)
-        # Centrados verticalmente (55% para dar espacio al titulo grande)
-        y_pos = h * 0.55
+        # Theme Toggle
+        theme_btn = ttk.Checkbutton(
+            footer_frame,
+            text="Modo Oscuro",
+            command=self.toggle_dark_mode,
+            bootstyle="round-toggle"
+        )
+        theme_btn.pack(side=tk.RIGHT)
 
-        if self.canvas_item_wsp:
-            self.starfield_canvas.coords(self.canvas_item_wsp, w * 0.35, y_pos)
-
-        if self.canvas_item_sms:
-            self.starfield_canvas.coords(self.canvas_item_sms, w * 0.65, y_pos)
-
-        if hasattr(self, 'copyright_text_id') and self.copyright_text_id:
-            self.starfield_canvas.coords(self.copyright_text_id, w * 0.5, h - 30)
-
-        if hasattr(self, 'title_text_id') and self.title_text_id:
-            # Posicionar título al 30% de la altura (aprox donde estaba el header)
-            self.starfield_canvas.coords(self.title_text_id, w * 0.5, 125)
-
-        if hasattr(self, 'dark_mode_text_id') and self.dark_mode_text_id:
-            # Posicionar botón dark mode alineado con el título, a la derecha
-            self.starfield_canvas.coords(self.dark_mode_text_id, w - 100, 125)
+        ttk.Label(footer_frame, text="© 2025 Hermes Inc.", font=("Inter", 8), bootstyle="secondary").pack(side=tk.LEFT)
 
     def enter_app_mode(self, mode):
         """Transición del menú de inicio a la aplicación principal."""
-        self.stop_starfield()
         self.start_menu_frame.pack_forget()
 
         # Mostrar UI principal
@@ -1070,7 +780,7 @@ class Hermes:
 
     def setup_left(self, parent):
         # Contenedor principal para las vistas
-        self.views_container = ctk.CTkFrame(parent, fg_color="transparent")
+        self.views_container = ttk.Frame(parent)
         self.views_container.pack(fill=tk.X, expand=False, anchor="n")
 
         # Las vistas ahora se inicializan bajo demanda (lazy loading)
@@ -1087,10 +797,21 @@ class Hermes:
         Muestra la vista tradicional, creándola si es la primera vez."""
         # Guardar datos de los textboxes para persistencia (si la vista Fidelizado ya existe)
         if self.fidelizado_view_frame and hasattr(self, 'fidelizado_groups_text'):
-            self.manual_inputs_groups = [line.strip() for line in self.fidelizado_groups_text.get("1.0", tk.END).splitlines() if line.strip()]
+            try:
+                # ScrolledText wraps Text widget in .text attribute usually, or delegates
+                # Safe way is to access .text if it exists, or call directly
+                txt_widget = getattr(self.fidelizado_groups_text, 'text', self.fidelizado_groups_text)
+                self.manual_inputs_groups = [line.strip() for line in txt_widget.get("1.0", tk.END).splitlines() if line.strip()]
+            except Exception:
+                pass
+
         if self.fidelizado_view_frame and hasattr(self, 'fidelizado_numbers_text'):
-            self.manual_inputs_numbers = [line.strip() for line in self.fidelizado_numbers_text.get("1.0", tk.END).splitlines() if line.strip()]
-            self.manual_messages_groups = self.manual_messages_numbers
+            try:
+                txt_widget = getattr(self.fidelizado_numbers_text, 'text', self.fidelizado_numbers_text)
+                self.manual_inputs_numbers = [line.strip() for line in txt_widget.get("1.0", tk.END).splitlines() if line.strip()]
+                self.manual_messages_groups = self.manual_messages_numbers
+            except Exception:
+                pass
 
         self.sms_mode_active = False
         if self.fidelizado_view_frame:
@@ -1100,7 +821,7 @@ class Hermes:
 
         # Crear la vista si no existe
         if self.traditional_view_frame is None:
-            self.traditional_view_frame = ctk.CTkFrame(self.views_container, fg_color="transparent")
+            self.traditional_view_frame = ttk.Frame(self.views_container)
             self.setup_traditional_view(self.traditional_view_frame)
 
         # Ocultar vista de Llamadas si está visible
@@ -1123,7 +844,7 @@ class Hermes:
             self.sms_view_frame.pack_forget()
 
         if self.calls_view_frame is None:
-            self.calls_view_frame = ctk.CTkFrame(self.views_container, fg_color="transparent")
+            self.calls_view_frame = ttk.Frame(self.views_container)
             self.setup_calls_view(self.calls_view_frame)
 
         self.calls_view_frame.pack(fill=tk.X, expand=False, anchor="n")
@@ -1143,7 +864,7 @@ class Hermes:
 
         # Crear la vista si no existe
         if self.fidelizado_view_frame is None:
-            self.fidelizado_view_frame = ctk.CTkFrame(self.views_container, fg_color="transparent")
+            self.fidelizado_view_frame = ttk.Frame(self.views_container)
             self.setup_fidelizado_view(self.fidelizado_view_frame)
 
         self._populate_fidelizado_inputs() # Repoblar datos al mostrar la vista
@@ -1178,7 +899,7 @@ class Hermes:
 
         # Crear la vista si no existe
         if self.sms_view_frame is None:
-            self.sms_view_frame = ctk.CTkFrame(self.views_container, fg_color="transparent")
+            self.sms_view_frame = ttk.Frame(self.views_container)
             self.setup_sms_view(self.sms_view_frame)
 
         self.sms_view_frame.pack(fill=tk.X, expand=False, anchor="n")
@@ -1187,70 +908,40 @@ class Hermes:
         self.set_activity_table_enabled(False)
 
     def _apply_fidelizado_layout_styles(self, active):
-        """Ajusta bordes y altura de tarjetas cuando se activa el modo Fidelizado."""
-        if hasattr(self, 'fidelizado_main_card'):
-            self.fidelizado_main_card.configure(
-                corner_radius=32 if active else 30,
-                border_width=1 if active else 0,
-                border_color=self._section_border_color()
-            )
-
-        if hasattr(self, 'log_card'):
-            self.log_card.configure(height=0)
-            self.log_card.pack_configure(**self.log_card_pack_defaults)
-            self.log_card.pack_propagate(True)
-
-            if hasattr(self, 'log_card_header') and hasattr(self, 'log_card_header_padding'):
-                self.log_card_header.grid_configure(**self.log_card_header_padding)
-            if hasattr(self, 'log_card_body') and hasattr(self, 'log_card_body_padding'):
-                self.log_card_body.grid_configure(**self.log_card_body_padding)
+        """Ajusta estilos cuando se activa el modo Fidelizado."""
+        # TTK styles are mostly static or theme-based.
+        # We leave this hook if needed for specific adjustments later.
+        pass
 
     def setup_traditional_view(self, parent):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=0)
 
-        content = ctk.CTkFrame(
-            parent,
-            fg_color=self.colors['bg_card'],
-            corner_radius=30,
-            border_width=1,
-            border_color=self._section_border_color()
-        )
+        # Card container
+        content = ttk.Frame(parent)
         content.grid(row=0, column=0, sticky="ew", padx=0, pady=(10, 20))
         content.grid_columnconfigure(0, weight=1)
 
-        header = ctk.CTkFrame(content, fg_color="transparent")
+        header = ttk.Frame(content)
         header.grid(row=0, column=0, sticky="ew", padx=30, pady=(25, 15))
         header.grid_columnconfigure(0, weight=1)
 
         # Botón Volver al Menú (Izquierda)
-        self.whatsapp_back_btn = ctk.CTkButton(
+        self.whatsapp_back_btn = ttk.Button(
             header,
-            text="←",
-            width=40,
+            text="← Volver",
             command=self.return_to_start_menu,
-            fg_color=self._section_bg_color(),
-            hover_color=lighten_color(self._section_bg_color(), 0.08),
-            text_color=self.colors['text'],
-            font=('Inter', 16, 'bold'),
-            corner_radius=20
+            bootstyle="link"
         )
         self.whatsapp_back_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-        ctk.CTkLabel(header, text="Whatsapp", font=('Inter', 26, 'bold'),
-                     text_color=self.colors['text']).pack(side=tk.LEFT)
+        ttk.Label(header, text="Whatsapp", font=("Inter", 26, "bold")).pack(side=tk.LEFT)
 
-        ctk.CTkButton(
+        ttk.Button(
             header,
             text="Tutorial",
             command=self.open_tutorial_window,
-            font=('Inter', 14, 'bold'),
-            fg_color="transparent",
-            text_color=self.colors['action_mode'],
-            width=60,
-            height=30,
-            anchor="s",
-            hover=False
+            bootstyle="info-link"
         ).pack(side=tk.LEFT, padx=(10, 0), pady=(8, 0))
 
         actions_section, actions_header = self._build_section(
@@ -1260,95 +951,68 @@ class Hermes:
             "Sigue los pasos en orden para iniciar la campaña."
         )
 
-        header_actions = ctk.CTkFrame(actions_header, fg_color="transparent")
+        # Toolbar Actions
+        header_actions = ttk.Frame(actions_header)
         header_actions.grid(row=0, column=2, rowspan=2, sticky="e", padx=(12, 0))
-        header_actions.grid_columnconfigure(0, weight=0)
-        header_actions.grid_columnconfigure(1, weight=0)
-        header_actions.grid_columnconfigure(2, weight=0)
-        header_actions.grid_rowconfigure(0, weight=1)
 
-        actions_body = ctk.CTkFrame(actions_section, fg_color="transparent")
+        actions_body = ttk.Frame(actions_section)
         actions_body.grid(row=1, column=0, sticky="ew", padx=20, pady=(10, 8))
-        actions_body.grid_columnconfigure(0, weight=0)
         actions_body.grid_columnconfigure(1, weight=1)
-        actions_body.grid_rowconfigure(0, weight=0)
 
-        self.additional_actions_frame = ctk.CTkFrame(actions_body, fg_color="transparent")
+        self.additional_actions_frame = ttk.Frame(actions_body)
         self.additional_actions_frame.grid(row=0, column=0, sticky="nw", padx=(0, 16))
-        self.additional_actions_frame.grid_columnconfigure(0, weight=1)
 
-        tool_btn_kwargs = dict(
-            fg_color=self._section_bg_color(),
-            text_color=self.colors['text'],
-            hover_color=lighten_color(self._section_bg_color(), 0.08),
-            font=self.fonts['button_small'],
-            cursor='hand2',
-            width=170,
-            height=36,
-            corner_radius=16,
-            border_width=1,
-            border_color=self._section_border_color()
-        )
+        tool_btn_style = "secondary-outline"
 
-        self.fidelizado_unlock_btn = ctk.CTkButton(
+        self.fidelizado_unlock_btn = ttk.Button(
             header_actions,
             text="Fidelizado",
             command=self.handle_fidelizado_access,
-            **tool_btn_kwargs
+            bootstyle=tool_btn_style
         )
         self.fidelizado_unlock_btn.grid(row=0, column=0, sticky="e", padx=(0, 12))
 
-        self.ver_pantalla_btn = ctk.CTkButton(
+        self.ver_pantalla_btn = ttk.Button(
             header_actions,
             text="Ver Pantalla",
             command=self._iniciar_ver_pantalla,
-            **tool_btn_kwargs
+            bootstyle=tool_btn_style
         )
         self.ver_pantalla_btn.grid(row=0, column=1, sticky="e", padx=(0, 12))
 
-        self.calls_btn = ctk.CTkButton(
+        self.calls_btn = ttk.Button(
             header_actions,
             text="Llamadas",
             command=self.show_calls_view,
-            **tool_btn_kwargs
+            bootstyle=tool_btn_style
         )
         self.calls_btn.grid(row=0, column=2, sticky="e", padx=(0, 12))
 
-        # Dark mode button moved to Start Menu
-
-        # Espaciado adicional para mantener alineado con el diseño previo
-        spacer = ctk.CTkLabel(self.additional_actions_frame, text="", fg_color="transparent")
-        spacer.grid(row=0, column=0, pady=(4, 0))
-
-        steps_wrapper = ctk.CTkFrame(actions_body, fg_color="transparent")
+        steps_wrapper = ttk.Frame(actions_body)
         steps_wrapper.grid(row=0, column=1, sticky="nsew")
         steps_wrapper.grid_columnconfigure(0, weight=1)
 
         step_buttons = [
-            ("Detectar dispositivos", self.detect_devices, 'action_detect'),
-            ("Cargar y procesar Excel", self.load_and_process_excel, 'action_excel'),
+            ("Detectar dispositivos", self.detect_devices, 'primary'),
+            ("Cargar y procesar Excel", self.load_and_process_excel, 'warning'),
         ]
 
         current_row = 0
 
         for index, (text, command, color_key) in enumerate(step_buttons, start=1):
-            row_frame = ctk.CTkFrame(steps_wrapper, fg_color="transparent")
+            row_frame = ttk.Frame(steps_wrapper)
             row_frame.grid(row=current_row, column=0, sticky="ew", pady=6)
             row_frame.grid_columnconfigure(1, weight=1)
 
             badge = self._create_step_badge(row_frame, index)
             badge.grid(row=0, column=0, padx=(0, 12))
 
-            btn = ctk.CTkButton(
+            btn = ttk.Button(
                 row_frame,
                 text=text,
                 command=command,
-                fg_color=self.colors[color_key],
-                hover_color=self.hover_colors[color_key],
-                text_color=self.colors['text_header_buttons'],
-                font=self.fonts['button'],
-                corner_radius=20,
-                height=44
+                bootstyle=color_key,
+                width=30
             )
             btn.grid(row=0, column=1, sticky='ew')
 
@@ -1359,117 +1023,93 @@ class Hermes:
 
             current_row += 1
 
+        # Mode Selector (Step 3)
         mode_step_index = len(step_buttons) + 1
-        mode_row = ctk.CTkFrame(steps_wrapper, fg_color="transparent")
+        mode_row = ttk.Frame(steps_wrapper)
         mode_row.grid(row=current_row, column=0, sticky="ew", pady=6)
         mode_row.grid_columnconfigure(1, weight=1)
 
         self._create_step_badge(mode_row, mode_step_index).grid(row=0, column=0, padx=(0, 12))
 
-        mode_content = ctk.CTkFrame(mode_row, fg_color="transparent")
+        mode_content = ttk.Frame(mode_row)
         mode_content.grid(row=0, column=1, sticky="ew")
-        mode_content.grid_columnconfigure(0, weight=1)
 
-        self.mode_selector = ctk.CTkSegmentedButton(
-            mode_content,
-            variable=self.traditional_send_mode,
-            values=["Business", "Normal", "Business/Normal", "Business/Normal 1/Normal 2"],
-            font=('Inter', 11, 'bold'),
-            height=36,
-            corner_radius=14,
-            fg_color=self._section_bg_color(),
-            selected_color=self.colors['action_mode'],
-            selected_hover_color=self.hover_colors['action_mode'],
-            unselected_color=self.colors['bg_card'],
-            unselected_hover_color=self._section_bg_color(),
-            text_color=self.colors['text']
-        )
-        self.mode_selector.grid(row=0, column=0, sticky="e")
+        self.mode_selector = ttk.Frame(mode_content)
+        self.mode_selector.pack(anchor='e')
+
+        # Segmented Button Replacement
+        modes = ["Business", "Normal", "Business/Normal", "Business/Normal 1/Normal 2"]
+        for m in modes:
+            ttk.Radiobutton(
+                self.mode_selector,
+                text=m,
+                variable=self.traditional_send_mode,
+                value=m,
+                style="Toolbutton",
+                bootstyle="info"
+            ).pack(side=tk.LEFT, padx=2)
+
         self.traditional_send_mode.trace_add('write', self.update_per_whatsapp_stat)
 
         current_row += 1
 
-        time_row = ctk.CTkFrame(steps_wrapper, fg_color="transparent")
+        time_row = ttk.Frame(steps_wrapper)
         time_row.grid(row=current_row, column=0, sticky="ew", pady=(4, 8))
-        time_row.grid_columnconfigure(0, weight=0)
         time_row.grid_columnconfigure(1, weight=1)
 
-        badge_placeholder = ctk.CTkFrame(time_row, width=34, height=34, fg_color="transparent")
-        badge_placeholder.grid(row=0, column=0, padx=(0, 12))
-        badge_placeholder.grid_propagate(False)
-
-        self.traditional_time_card = ctk.CTkFrame(
-            time_row,
-            fg_color=self._section_bg_color(),
-            corner_radius=16,
-            border_width=1,
-            border_color=self._section_border_color()
-        )
+        # Time Card
+        # Reusing _build_section manually for nested card look
+        self.traditional_time_card = ttk.Labelframe(time_row, text=" Tiempo de envío ", padding=15)
         self.traditional_time_card.grid(row=0, column=1, sticky="ew")
         self.traditional_time_card.grid_columnconfigure(0, weight=1)
 
-        time_header = ctk.CTkFrame(self.traditional_time_card, fg_color="transparent")
-        time_header.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 8))
-        time_header.grid_columnconfigure(0, weight=1)
-        time_header.grid_columnconfigure(1, weight=0)
+        time_header = ttk.Frame(self.traditional_time_card)
+        time_header.grid(row=0, column=0, sticky="ew")
+        time_header.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(time_header, text="Tiempo de envío", font=self.fonts['card_title'],
-                     text_color=self.colors['text']).grid(row=0, column=0, sticky="w")
-
-        self.time_advanced_toggle_btn = ctk.CTkButton(
+        self.time_advanced_toggle_btn = ttk.Button(
             time_header,
             text="Opciones avanzadas ▾",
             command=self.toggle_time_settings,
-            fg_color=self._section_bg_color(),
-            hover_color=lighten_color(self._section_bg_color(), 0.12),
-            text_color=self.colors['text_light'],
-            font=self.fonts['button_small'],
-            cursor='hand2',
-            height=30,
-            corner_radius=10,
-            border_width=1,
-            border_color=self._section_border_color()
+            bootstyle="link"
         )
-        self.time_advanced_toggle_btn.grid(row=0, column=1, sticky="e")
+        self.time_advanced_toggle_btn.pack(anchor='ne')
 
-        time_main_settings = ctk.CTkFrame(self.traditional_time_card, fg_color="transparent")
-        time_main_settings.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 12))
+        time_main_settings = ttk.Frame(self.traditional_time_card)
+        time_main_settings.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         self.create_setting(time_main_settings, "Tiempo entre envíos (seg):", self.delay_min, self.delay_max, 0)
 
-        self.time_advanced_frame = ctk.CTkFrame(self.traditional_time_card, fg_color="transparent")
-        self.time_advanced_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 18))
+        self.time_advanced_frame = ttk.Frame(self.traditional_time_card)
+        self.time_advanced_frame.grid(row=2, column=0, sticky="ew", pady=(0, 18))
         self.time_advanced_frame.grid_columnconfigure(0, weight=1)
         self.time_advanced_frame.grid_columnconfigure(1, weight=1)
 
         self.create_setting(self.time_advanced_frame, "Espera Abrir (seg):", self.wait_after_open, None, 0)
 
         # Checkbox "Modo Simultáneo"
-        self.traditional_simultaneous_switch = ctk.CTkSwitch(
+        self.traditional_simultaneous_switch = ttk.Checkbutton(
             self.time_advanced_frame,
             text="Modo Simultáneo",
             variable=self.traditional_simultaneous_mode,
-            font=self.fonts['setting_label'],
-            text_color=self.colors['text'],
-            button_color=self.colors['action_mode'],
-            progress_color=self.colors['action_mode']
+            bootstyle="round-toggle"
         )
-        self.traditional_simultaneous_switch.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 5), padx=(0, 0))
+        self.traditional_simultaneous_switch.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 5))
 
-        # Pausa programada en una línea
-        ctk.CTkLabel(self.time_advanced_frame, text="Tiempo entre mensaje:", font=self.fonts['setting_label'], fg_color="transparent", text_color=self.colors['text_light']).grid(row=2, column=0, sticky='w', pady=10)
+        # Pausa programada
+        ttk.Label(self.time_advanced_frame, text="Tiempo entre mensaje:", bootstyle="secondary").grid(row=2, column=0, sticky='w', pady=10)
 
-        pause_controls = ctk.CTkFrame(self.time_advanced_frame, fg_color="transparent")
+        pause_controls = ttk.Frame(self.time_advanced_frame)
         pause_controls.grid(row=2, column=1, sticky='e', pady=10, padx=(10, 0))
 
         spinbox_count = self._create_spinbox_widget(pause_controls, self.pause_sends_count, min_val=0, max_val=999)
         spinbox_count.pack(side=tk.LEFT, padx=(0, 4))
 
-        ctk.CTkLabel(pause_controls, text="mensajes esperar", font=self.fonts['setting_label'], fg_color="transparent", text_color=self.colors['text_light']).pack(side=tk.LEFT, padx=4)
+        ttk.Label(pause_controls, text="mensajes esperar", bootstyle="secondary").pack(side=tk.LEFT, padx=4)
 
         spinbox_delay_min = self._create_spinbox_widget(pause_controls, self.pause_sends_delay_min, min_val=1, max_val=300)
         spinbox_delay_min.pack(side=tk.LEFT, padx=4)
 
-        ctk.CTkLabel(pause_controls, text="-", font=self.fonts['setting_label'], fg_color="transparent").pack(side=tk.LEFT, padx=4)
+        ttk.Label(pause_controls, text="-").pack(side=tk.LEFT, padx=4)
 
         spinbox_delay_max = self._create_spinbox_widget(pause_controls, self.pause_sends_delay_max, min_val=1, max_val=300)
         spinbox_delay_max.pack(side=tk.LEFT, padx=0)
@@ -1480,56 +1120,40 @@ class Hermes:
         current_row += 1
 
         start_step_index = mode_step_index + 1
-        start_row = ctk.CTkFrame(steps_wrapper, fg_color="transparent")
+        start_row = ttk.Frame(steps_wrapper)
         start_row.grid(row=current_row, column=0, sticky="ew", pady=(10, 4))
         start_row.grid_columnconfigure(1, weight=1)
 
         self._create_step_badge(start_row, start_step_index).grid(row=0, column=0, padx=(0, 12))
 
-        self.btn_start = ctk.CTkButton(
+        self.btn_start = ttk.Button(
             start_row,
             text="Iniciar envío",
             command=self.start_sending,
-            fg_color=self.colors['action_start'],
-            hover_color=self.hover_colors['action_start'],
-            text_color=self.colors['text_header_buttons'],
-            font=self.fonts['button'],
-            corner_radius=24,
-            height=48
+            bootstyle="success",
+            width=30
         )
         self.btn_start.grid(row=0, column=1, sticky='ew')
 
-        controls = ctk.CTkFrame(actions_section, fg_color="transparent")
+        controls = ttk.Frame(actions_section)
         controls.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 10))
         controls.grid_columnconfigure(0, weight=1)
         controls.grid_columnconfigure(1, weight=1)
 
-        self.btn_pause = ctk.CTkButton(
+        self.btn_pause = ttk.Button(
             controls,
             text="Pausar",
             command=self.pause_sending,
-            fg_color=self.colors['action_pause'],
-            hover_color=self.hover_colors['action_pause'],
-            text_color=self.colors['text_header_buttons'],
-            text_color_disabled='#ffffff',
-            font=self.fonts['button_small'],
-            corner_radius=18,
-            height=40,
+            bootstyle="warning",
             state=tk.DISABLED
         )
         self.btn_pause.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
-        self.btn_stop = ctk.CTkButton(
+        self.btn_stop = ttk.Button(
             controls,
             text="Cancelar",
             command=self.stop_sending,
-            fg_color=self.colors['action_cancel'],
-            hover_color=self.hover_colors['action_cancel'],
-            text_color=self.colors['text_header_buttons'],
-            text_color_disabled='#ffffff',
-            font=self.fonts['button_small'],
-            corner_radius=18,
-            height=40,
+            bootstyle="danger",
             state=tk.DISABLED
         )
         self.btn_stop.grid(row=0, column=1, sticky="ew", padx=(8, 0))
@@ -1538,80 +1162,62 @@ class Hermes:
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
 
-        container = ctk.CTkFrame(parent, fg_color="transparent")
+        container = ttk.Frame(parent)
         container.pack(fill=tk.BOTH, expand=True)
 
-        content = ctk.CTkFrame(container, fg_color=self.colors['bg_card'], corner_radius=30)
+        content = ttk.Frame(container)
         content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         content.grid_columnconfigure(0, weight=1)
 
-        header_frame = ctk.CTkFrame(content, fg_color="transparent")
+        header_frame = ttk.Frame(content)
         header_frame.grid(row=0, column=0, sticky="ew", padx=30, pady=(25, 10))
         header_frame.grid_columnconfigure(0, weight=1)
 
-        # Botón Volver (Flecha izquierda)
-        self.sms_back_btn = ctk.CTkButton(
+        # Botón Volver
+        self.sms_back_btn = ttk.Button(
             header_frame,
-            text="←",
-            width=40,
+            text="← Volver",
             command=self.return_to_start_menu,
-            fg_color=self._section_bg_color(), # Usar color de fondo para que parezca botón simple
-            hover_color=lighten_color(self._section_bg_color(), 0.08),
-            text_color=self.colors['text'],
-            font=('Inter', 16, 'bold'),
-            corner_radius=20,
-            height=40
+            bootstyle="link"
         )
         self.sms_back_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-        title = ctk.CTkLabel(header_frame, text="SMS", font=('Inter', 28, 'bold'), text_color=self.colors['text'])
-        title.pack(side=tk.LEFT)
+        ttk.Label(header_frame, text="SMS", font=('Inter', 28, 'bold')).pack(side=tk.LEFT)
 
-        ctk.CTkButton(
+        ttk.Button(
             header_frame,
             text="Tutorial",
             command=self.open_tutorial_window,
-            font=('Inter', 14, 'bold'),
-            fg_color="transparent",
-            text_color=self.colors['action_mode'],
-            width=60,
-            height=30,
-            anchor="s",
-            hover=False
+            bootstyle="info-link"
         ).pack(side=tk.LEFT, padx=(10, 0), pady=(8, 0))
 
         actions_section, _ = self._build_section(content, 1, None,
                                                  "Sigue los pasos para preparar y lanzar la campaña.", icon="📨")
 
-        sms_steps_wrapper = ctk.CTkFrame(actions_section, fg_color="transparent")
+        sms_steps_wrapper = ttk.Frame(actions_section)
         sms_steps_wrapper.grid(row=1, column=0, sticky="ew", padx=20, pady=(12, 10))
         sms_steps_wrapper.grid_columnconfigure(0, weight=1)
 
         # Paso 1 y 2: Botones
         sms_step_buttons = [
-            ("Detectar dispositivos", self.detect_devices, 'action_detect'),
-            ("Cargar y procesar Excel", self.load_and_process_excel_sms, 'action_excel'),
+            ("Detectar dispositivos", self.detect_devices, 'primary'),
+            ("Cargar y procesar Excel", self.load_and_process_excel_sms, 'warning'),
         ]
 
         current_row = 0
         for index, (text, command, color_key) in enumerate(sms_step_buttons, start=1):
-            row_frame = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
+            row_frame = ttk.Frame(sms_steps_wrapper)
             row_frame.grid(row=current_row, column=0, sticky="ew", pady=6)
             row_frame.grid_columnconfigure(1, weight=1)
 
             badge = self._create_step_badge(row_frame, index)
             badge.grid(row=0, column=0, padx=(0, 12))
 
-            btn = ctk.CTkButton(
+            btn = ttk.Button(
                 row_frame,
                 text=text,
                 command=command,
-                fg_color=self.colors[color_key],
-                hover_color=self.hover_colors[color_key],
-                text_color=self.colors['text_header_buttons'],
-                font=self.fonts['button'],
-                corner_radius=20,
-                height=44
+                bootstyle=color_key
             )
             btn.grid(row=0, column=1, sticky='ew')
 
@@ -1622,160 +1228,106 @@ class Hermes:
 
             current_row += 1
 
-        # Paso 3: Envío Manual (NUEVO)
-        step3_manual_row = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
+        # Paso 3: Envío Manual
+        step3_manual_row = ttk.Frame(sms_steps_wrapper)
         step3_manual_row.grid(row=current_row, column=0, sticky="ew", pady=(4, 8))
-        step3_manual_row.grid_columnconfigure(0, weight=0)
         step3_manual_row.grid_columnconfigure(1, weight=1)
 
         self._create_step_badge(step3_manual_row, 3).grid(row=0, column=0, padx=(0, 12), sticky="n", pady=(4, 0))
 
-        manual_card = ctk.CTkFrame(
-            step3_manual_row,
-            fg_color=self._section_bg_color(),
-            corner_radius=16,
-            border_width=1,
-            border_color=self._section_border_color()
-        )
+        manual_card = ttk.Labelframe(step3_manual_row, text=" Envío Manual (Opcional) ", padding=10)
         manual_card.grid(row=0, column=1, sticky="ew")
         manual_card.grid_columnconfigure(0, weight=1)
 
-        manual_header = ctk.CTkFrame(manual_card, fg_color="transparent")
-        manual_header.pack(fill=tk.X, padx=20, pady=(15, 5))
+        ttk.Label(manual_card, text="Si se usa, ignora el Excel.", bootstyle="secondary").pack(fill=tk.X, padx=5, pady=(0, 5))
 
-        ctk.CTkLabel(manual_header, text="Envío Manual (Opcional)", font=self.fonts['card_title'],
-                     text_color=self.colors['text']).pack(side=tk.LEFT)
-        ctk.CTkLabel(manual_header, text="Si se usa, ignora el Excel.", font=self.fonts['setting_label'],
-                     text_color=self.colors['text_light']).pack(side=tk.LEFT, padx=(10, 0))
+        manual_body = ttk.Frame(manual_card)
+        manual_body.pack(fill=tk.X, padx=5, pady=(0, 5))
 
-        manual_body = ctk.CTkFrame(manual_card, fg_color="transparent")
-        manual_body.pack(fill=tk.X, padx=20, pady=(0, 15))
-
-        # Grid para inputs
         manual_body.grid_columnconfigure(0, weight=1)
         manual_body.grid_columnconfigure(1, weight=1)
 
-        # Columna Izquierda: Números
-        ctk.CTkLabel(manual_body, text="Números (uno por línea):", font=self.fonts['setting_label'],
-                     text_color=self.colors['text']).grid(row=0, column=0, sticky="w", pady=(0, 5))
+        ttk.Label(manual_body, text="Números (uno por línea):").grid(row=0, column=0, sticky="w", pady=(0, 5))
 
-        self.sms_manual_numbers_text = ctk.CTkTextbox(
-            manual_body, height=100, font=('Consolas', 12),
-            fg_color=self.colors['bg'], border_width=1, border_color="#cccccc"
+        self.sms_manual_numbers_text = ScrolledText(
+            manual_body, height=5, font=('Consolas', 10)
         )
         self.sms_manual_numbers_text.grid(row=1, column=0, sticky="ew", padx=(0, 10))
 
-        # Columna Derecha: Mensaje y Repeticiones
-        right_col = ctk.CTkFrame(manual_body, fg_color="transparent")
+        right_col = ttk.Frame(manual_body)
         right_col.grid(row=1, column=1, sticky="nsew")
         right_col.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(right_col, text="Mensaje:", font=self.fonts['setting_label'],
-                     text_color=self.colors['text']).pack(anchor="w", pady=(0, 5))
+        ttk.Label(right_col, text="Mensaje:").pack(anchor="w", pady=(0, 5))
 
-        self.sms_manual_message_text = ctk.CTkTextbox(
-            right_col, height=60, font=('Inter', 12),
-            fg_color=self.colors['bg'], border_width=1, border_color="#cccccc"
+        self.sms_manual_message_text = ScrolledText(
+            right_col, height=3, font=('Inter', 10)
         )
         self.sms_manual_message_text.pack(fill=tk.X, expand=True)
 
-        reps_frame = ctk.CTkFrame(right_col, fg_color="transparent")
+        reps_frame = ttk.Frame(right_col)
         reps_frame.pack(fill=tk.X, pady=(10, 0))
 
-        ctk.CTkLabel(reps_frame, text="Mensajes por número:", font=self.fonts['setting_label'],
-                     text_color=self.colors['text']).pack(side=tk.LEFT)
-
+        ttk.Label(reps_frame, text="Mensajes por número:").pack(side=tk.LEFT)
         self._create_spinbox_widget(reps_frame, self.sms_manual_reps_var, min_val=1, max_val=100).pack(side=tk.LEFT, padx=(10, 0))
 
         current_row += 1
 
-        # Paso 4: Configuración de tiempos (Antiguo Paso 3)
-        step4_row = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
+        # Paso 4: Configuración de tiempos
+        step4_row = ttk.Frame(sms_steps_wrapper)
         step4_row.grid(row=current_row, column=0, sticky="ew", pady=(4, 8))
-        step4_row.grid_columnconfigure(0, weight=0)
         step4_row.grid_columnconfigure(1, weight=1)
 
         self._create_step_badge(step4_row, 4).grid(row=0, column=0, padx=(0, 12), sticky="n", pady=(4, 0))
 
-        sms_time_card = ctk.CTkFrame(
-            step4_row,
-            fg_color=self._section_bg_color(),
-            corner_radius=16,
-            border_width=1,
-            border_color=self._section_border_color()
-        )
+        sms_time_card = ttk.Labelframe(step4_row, text=" Configuración ", padding=10)
         sms_time_card.grid(row=0, column=1, sticky="ew")
         sms_time_card.grid_columnconfigure(0, weight=1)
 
-        # Header del apartado de tiempo SMS
-        sms_time_header = ctk.CTkFrame(sms_time_card, fg_color="transparent")
-        sms_time_header.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 8))
-        sms_time_header.grid_columnconfigure(0, weight=1)
-        sms_time_header.grid_columnconfigure(1, weight=0)
+        sms_time_header = ttk.Frame(sms_time_card)
+        sms_time_header.grid(row=0, column=0, sticky="ew")
+        sms_time_header.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(sms_time_header, text="Configuración", font=self.fonts['card_title'],
-                     text_color=self.colors['text']).grid(row=0, column=0, sticky="w")
-
-        self.sms_time_advanced_toggle_btn = ctk.CTkButton(
+        self.sms_time_advanced_toggle_btn = ttk.Button(
             sms_time_header,
             text="Opciones avanzadas ▾",
             command=self.toggle_sms_time_settings,
-            fg_color=self._section_bg_color(),
-            hover_color=lighten_color(self._section_bg_color(), 0.12),
-            text_color=self.colors['text_light'],
-            font=self.fonts['button_small'],
-            cursor='hand2',
-            height=30,
-            corner_radius=10,
-            border_width=1,
-            border_color=self._section_border_color()
+            bootstyle="link"
         )
-        self.sms_time_advanced_toggle_btn.grid(row=0, column=1, sticky="e")
+        self.sms_time_advanced_toggle_btn.pack(anchor='ne')
 
-        # Configuración principal (Delay)
-        sms_time_main_settings = ctk.CTkFrame(sms_time_card, fg_color="transparent")
-        sms_time_main_settings.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 12))
+        sms_time_main_settings = ttk.Frame(sms_time_card)
+        sms_time_main_settings.grid(row=1, column=0, sticky="ew", pady=(0, 12))
 
-        # Frame contenedor para el Delay y el Checkbox
-        delay_container = ctk.CTkFrame(sms_time_main_settings, fg_color="transparent")
+        delay_container = ttk.Frame(sms_time_main_settings)
         delay_container.pack(fill=tk.X, expand=True)
 
         self.create_setting(delay_container, "Delay (seg):", self.sms_delay_min, self.sms_delay_max, 0)
 
-        # Checkbox "Enviar en simultáneo" (Movido a principal para visibilidad)
-        self.sms_simultaneous_switch = ctk.CTkSwitch(
+        self.sms_simultaneous_switch = ttk.Checkbutton(
             sms_time_main_settings,
             text="Enviar en simultáneo (Paralelo)",
             variable=self.sms_simultaneous_mode,
-            font=self.fonts['setting_label'],
-            text_color=self.colors['text'],
-            button_color=self.colors['action_mode'],
-            progress_color=self.colors['action_mode']
+            bootstyle="round-toggle"
         )
         self.sms_simultaneous_switch.pack(side=tk.LEFT, padx=(20, 0), pady=(0, 10))
 
-        # Configuración avanzada (Oculta por defecto)
-        self.sms_time_advanced_frame = ctk.CTkFrame(sms_time_card, fg_color="transparent")
-        self.sms_time_advanced_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 18))
+        self.sms_time_advanced_frame = ttk.Frame(sms_time_card)
+        self.sms_time_advanced_frame.grid(row=2, column=0, sticky="ew", pady=(0, 18))
         self.create_setting(self.sms_time_advanced_frame, "Esperar a enviar (seg):", self.wait_after_first_enter, None, 0)
 
-
-        # Checkbox "Realizar llamada" y Duración
-        call_frame = ctk.CTkFrame(self.sms_time_advanced_frame, fg_color="transparent")
+        call_frame = ttk.Frame(self.sms_time_advanced_frame)
         call_frame.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
-        self.sms_call_switch = ctk.CTkSwitch(
+        self.sms_call_switch = ttk.Checkbutton(
             call_frame,
             text="Realizar llamada",
             variable=self.sms_enable_call,
-            font=self.fonts['setting_label'],
-            text_color=self.colors['text'],
-            button_color=self.colors['action_mode'],
-            progress_color=self.colors['action_mode']
+            bootstyle="round-toggle"
         )
         self.sms_call_switch.pack(side=tk.LEFT, padx=(0, 10))
 
-        ctk.CTkLabel(call_frame, text="Duración (seg):", font=self.fonts['setting_label'], text_color=self.colors['text_light']).pack(side=tk.LEFT, padx=(5, 5))
+        ttk.Label(call_frame, text="Duración (seg):", bootstyle="secondary").pack(side=tk.LEFT, padx=(5, 5))
         self._create_spinbox_widget(call_frame, self.sms_call_duration, min_val=1, max_val=300).pack(side=tk.LEFT)
 
         self.sms_time_advanced_visible = False
@@ -1783,57 +1335,40 @@ class Hermes:
 
         current_row += 1
 
-        # Paso 5: Iniciar envío (Antiguo Paso 4)
-        start_row = ctk.CTkFrame(sms_steps_wrapper, fg_color="transparent")
+        # Paso 5: Iniciar
+        start_row = ttk.Frame(sms_steps_wrapper)
         start_row.grid(row=current_row, column=0, sticky="ew", pady=(16, 0))
         start_row.grid_columnconfigure(1, weight=1)
 
         self._create_step_badge(start_row, 5).grid(row=0, column=0, padx=(0, 12))
 
-        self.sms_btn_start = ctk.CTkButton(
+        self.sms_btn_start = ttk.Button(
             start_row,
             text="Iniciar envío SMS",
             command=self.start_sending,
-            fg_color=self.colors['action_start'],
-            hover_color=self.hover_colors['action_start'],
-            text_color=self.colors['text_header_buttons'],
-            font=self.fonts['button'],
-            corner_radius=24,
-            height=48
+            bootstyle="success"
         )
         self.sms_btn_start.grid(row=0, column=1, sticky='ew')
 
-        sms_controls = ctk.CTkFrame(actions_section, fg_color="transparent")
+        sms_controls = ttk.Frame(actions_section)
         sms_controls.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 10))
         sms_controls.grid_columnconfigure(0, weight=1)
         sms_controls.grid_columnconfigure(1, weight=1)
 
-        self.sms_btn_pause = ctk.CTkButton(
+        self.sms_btn_pause = ttk.Button(
             sms_controls,
             text="Pausar",
             command=self.pause_sending,
-            fg_color=self.colors['action_pause'],
-            hover_color=self.hover_colors['action_pause'],
-            text_color=self.colors['text_header_buttons'],
-            text_color_disabled='#ffffff',
-            font=self.fonts['button_small'],
-            corner_radius=18,
-            height=40,
+            bootstyle="warning",
             state=tk.DISABLED
         )
         self.sms_btn_pause.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
-        self.sms_btn_stop = ctk.CTkButton(
+        self.sms_btn_stop = ttk.Button(
             sms_controls,
             text="Cancelar",
             command=self.stop_sending,
-            fg_color=self.colors['action_cancel'],
-            hover_color=self.hover_colors['action_cancel'],
-            text_color=self.colors['text_header_buttons'],
-            text_color_disabled='#ffffff',
-            font=self.fonts['button_small'],
-            corner_radius=18,
-            height=40,
+            bootstyle="danger",
             state=tk.DISABLED
         )
         self.sms_btn_stop.grid(row=0, column=1, sticky="ew", padx=(8, 0))
@@ -1843,249 +1378,219 @@ class Hermes:
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
 
-        container = ctk.CTkFrame(parent, fg_color="transparent")
+        container = ttk.Frame(parent)
         container.pack(fill=tk.BOTH, expand=True)
 
-        content = ctk.CTkFrame(container, fg_color=self.colors['bg_card'], corner_radius=30)
+        content = ttk.Frame(container)
         content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         content.grid_columnconfigure(0, weight=1)
 
-        header_frame = ctk.CTkFrame(content, fg_color="transparent")
+        header_frame = ttk.Frame(content)
         header_frame.grid(row=0, column=0, sticky="ew", padx=30, pady=(25, 10))
         header_frame.grid_columnconfigure(0, weight=1)
 
         # Botón Volver
-        self.calls_back_btn = ctk.CTkButton(
-            header_frame, text="←", width=40,
+        self.calls_back_btn = ttk.Button(
+            header_frame, text="← Volver", width=10,
             command=self.show_traditional_view,
-            fg_color=self._section_bg_color(),
-            hover_color=lighten_color(self._section_bg_color(), 0.08),
-            text_color=self.colors['text'],
-            font=('Inter', 16, 'bold'),
-            corner_radius=20,
-            height=40
+            bootstyle="link"
         )
         self.calls_back_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-        title = ctk.CTkLabel(header_frame, text="Llamadas WhatsApp", font=('Inter', 28, 'bold'), text_color=self.colors['text'])
-        title.pack(side=tk.LEFT)
+        ttk.Label(header_frame, text="Llamadas WhatsApp", font=('Inter', 28, 'bold')).pack(side=tk.LEFT)
 
         actions_section, _ = self._build_section(content, 1, None, "Configura y lanza las llamadas masivas.", icon="📞")
 
-        calls_steps_wrapper = ctk.CTkFrame(actions_section, fg_color="transparent")
+        calls_steps_wrapper = ttk.Frame(actions_section)
         calls_steps_wrapper.grid(row=1, column=0, sticky="ew", padx=20, pady=(12, 10))
         calls_steps_wrapper.grid_columnconfigure(0, weight=1)
 
         # --- Paso 1: Detectar ---
-        step1_row = ctk.CTkFrame(calls_steps_wrapper, fg_color="transparent")
+        step1_row = ttk.Frame(calls_steps_wrapper)
         step1_row.grid(row=0, column=0, sticky="ew", pady=6)
         step1_row.grid_columnconfigure(1, weight=1)
         self._create_step_badge(step1_row, 1).grid(row=0, column=0, padx=(0, 12))
 
-        self.calls_btn_detect = ctk.CTkButton(
+        self.calls_btn_detect = ttk.Button(
             step1_row, text="Detectar dispositivos", command=self.detect_devices,
-            fg_color=self.colors['action_detect'], hover_color=self.hover_colors['action_detect'],
-            text_color=self.colors['text_header_buttons'], font=self.fonts['button'],
-            corner_radius=20, height=44
+            bootstyle="primary"
         )
         self.calls_btn_detect.grid(row=0, column=1, sticky='ew')
 
         # --- Paso 2: Configuración ---
-        step2_row = ctk.CTkFrame(calls_steps_wrapper, fg_color="transparent")
+        step2_row = ttk.Frame(calls_steps_wrapper)
         step2_row.grid(row=1, column=0, sticky="ew", pady=(4, 8))
         step2_row.grid_columnconfigure(0, weight=0)
         step2_row.grid_columnconfigure(1, weight=1)
         self._create_step_badge(step2_row, 2).grid(row=0, column=0, padx=(0, 12), sticky="n", pady=(4, 0))
 
-        calls_config_card = ctk.CTkFrame(step2_row, fg_color=self._section_bg_color(), corner_radius=16, border_width=1, border_color=self._section_border_color())
+        calls_config_card = ttk.Labelframe(step2_row, text=" Configuración ", padding=10)
         calls_config_card.grid(row=0, column=1, sticky="ew")
         calls_config_card.grid_columnconfigure(0, weight=1)
 
         # WhatsApp Mode
-        mode_frame = ctk.CTkFrame(calls_config_card, fg_color="transparent")
+        mode_frame = ttk.Frame(calls_config_card)
         mode_frame.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 10))
-        ctk.CTkLabel(mode_frame, text="WhatsApp a usar:", font=self.fonts['setting_label'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
-        self.calls_mode_selector = ctk.CTkSegmentedButton(
-            mode_frame, variable=self.calls_whatsapp_mode,
-            values=["Business", "Normal", "Ambos"],
-            font=self.fonts['button_small']
-        )
+        ttk.Label(mode_frame, text="WhatsApp a usar:", bootstyle="secondary").pack(side=tk.LEFT, padx=(0, 10))
+
+        self.calls_mode_selector = ttk.Frame(mode_frame)
         self.calls_mode_selector.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+        for m in ["Business", "Normal", "Ambos"]:
+            ttk.Radiobutton(self.calls_mode_selector, text=m, variable=self.calls_whatsapp_mode, value=m, style="Toolbutton").pack(side=tk.LEFT, padx=2)
+
         # Settings Grid
-        settings_grid = ctk.CTkFrame(calls_config_card, fg_color="transparent")
+        settings_grid = ttk.Frame(calls_config_card)
         settings_grid.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 15))
 
         # Delay
-        ctk.CTkLabel(settings_grid, text="Tiempo entre llamadas (seg):", font=self.fonts['setting_label'], text_color=self.colors['text_light']).grid(row=0, column=0, sticky="w", pady=5)
-        delay_ctrls = ctk.CTkFrame(settings_grid, fg_color="transparent")
+        ttk.Label(settings_grid, text="Tiempo entre llamadas (seg):", bootstyle="secondary").grid(row=0, column=0, sticky="w", pady=5)
+        delay_ctrls = ttk.Frame(settings_grid)
         delay_ctrls.grid(row=0, column=1, sticky="w", padx=10)
         self._create_spinbox_widget(delay_ctrls, self.calls_delay_min, 1, 300).pack(side=tk.LEFT)
-        ctk.CTkLabel(delay_ctrls, text="-", font=self.fonts['setting_label'], fg_color="transparent").pack(side=tk.LEFT, padx=5)
+        ttk.Label(delay_ctrls, text="-").pack(side=tk.LEFT, padx=5)
         self._create_spinbox_widget(delay_ctrls, self.calls_delay_max, 1, 300).pack(side=tk.LEFT)
 
         # Duration
-        ctk.CTkLabel(settings_grid, text="Duración de llamada (seg):", font=self.fonts['setting_label'], text_color=self.colors['text_light']).grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(settings_grid, text="Duración de llamada (seg):", bootstyle="secondary").grid(row=1, column=0, sticky="w", pady=5)
         self._create_spinbox_widget(settings_grid, self.calls_duration, 1, 600).grid(row=1, column=1, sticky="w", padx=10)
 
         # Simultaneous
-        self.calls_simultaneous_switch = ctk.CTkSwitch(
+        self.calls_simultaneous_switch = ttk.Checkbutton(
             settings_grid, text="Llamada simultánea (multidispositivo)", variable=self.calls_simultaneous_mode,
-            font=self.fonts['setting_label'], text_color=self.colors['text'],
-            button_color=self.colors['action_mode'], progress_color=self.colors['action_mode']
+            bootstyle="round-toggle"
         )
         self.calls_simultaneous_switch.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
         # --- Paso 3: Carga ---
-        step3_row = ctk.CTkFrame(calls_steps_wrapper, fg_color="transparent")
+        step3_row = ttk.Frame(calls_steps_wrapper)
         step3_row.grid(row=2, column=0, sticky="ew", pady=6)
         step3_row.grid_columnconfigure(1, weight=1)
         self._create_step_badge(step3_row, 3).grid(row=0, column=0, padx=(0, 12), sticky="n")
 
-        load_container = ctk.CTkFrame(step3_row, fg_color="transparent")
+        load_container = ttk.Frame(step3_row)
         load_container.grid(row=0, column=1, sticky="ew")
         load_container.grid_columnconfigure(0, weight=1)
 
-        self.calls_btn_load = ctk.CTkButton(
+        self.calls_btn_load = ttk.Button(
             load_container, text="Cargar Excel", command=self.load_and_process_excel_calls,
-            fg_color=self.colors['action_excel'], hover_color=self.hover_colors['action_excel'],
-            text_color=self.colors['text_header_buttons'], font=self.fonts['button'],
-            corner_radius=20, height=44
+            bootstyle="warning"
         )
         self.calls_btn_load.pack(fill=tk.X)
 
         # --- Paso 4: Iniciar ---
-        step4_row = ctk.CTkFrame(calls_steps_wrapper, fg_color="transparent")
+        step4_row = ttk.Frame(calls_steps_wrapper)
         step4_row.grid(row=3, column=0, sticky="ew", pady=(16, 0))
         step4_row.grid_columnconfigure(1, weight=1)
         self._create_step_badge(step4_row, 4).grid(row=0, column=0, padx=(0, 12))
 
-        self.calls_btn_start = ctk.CTkButton(
+        self.calls_btn_start = ttk.Button(
             step4_row, text="Iniciar Llamadas", command=self.start_calling,
-            fg_color=self.colors['action_start'], hover_color=self.hover_colors['action_start'],
-            text_color=self.colors['text_header_buttons'], font=self.fonts['button'],
-            corner_radius=24, height=48
+            bootstyle="success"
         )
         self.calls_btn_start.grid(row=0, column=1, sticky='ew')
 
         # Controles Pausa/Stop
-        calls_controls = ctk.CTkFrame(actions_section, fg_color="transparent")
+        calls_controls = ttk.Frame(actions_section)
         calls_controls.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 10))
         calls_controls.grid_columnconfigure(0, weight=1)
         calls_controls.grid_columnconfigure(1, weight=1)
 
-        self.calls_btn_pause = ctk.CTkButton(
+        self.calls_btn_pause = ttk.Button(
             calls_controls, text="Pausar", command=self.pause_sending,
-            fg_color=self.colors['action_pause'], hover_color=self.hover_colors['action_pause'],
-            text_color=self.colors['text_header_buttons'], text_color_disabled='#ffffff',
-            font=self.fonts['button_small'], corner_radius=18, height=40, state=tk.DISABLED
+            bootstyle="warning", state=tk.DISABLED
         )
         self.calls_btn_pause.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
-        self.calls_btn_stop = ctk.CTkButton(
+        self.calls_btn_stop = ttk.Button(
             calls_controls, text="Cancelar", command=self.stop_sending,
-            fg_color=self.colors['action_cancel'], hover_color=self.hover_colors['action_cancel'],
-            text_color=self.colors['text_header_buttons'], text_color_disabled='#ffffff',
-            font=self.fonts['button_small'], corner_radius=18, height=40, state=tk.DISABLED
+            bootstyle="danger", state=tk.DISABLED
         )
         self.calls_btn_stop.grid(row=0, column=1, sticky="ew", padx=(8, 0))
 
     def setup_right(self, parent):
         # Bloque 1: Estado y Progreso
-        sc = ctk.CTkFrame(parent, fg_color=self.colors['bg_card'], corner_radius=30)
+        # To make it look like a card, we might want a Labelframe or just a Frame with border
+        sc = ttk.Labelframe(parent, text=" Estado ", padding=15)
         sc.pack(fill=tk.X, pady=(0, 20), padx=10)
         self.state_progress_card = sc
 
-        t = ctk.CTkFrame(sc, fg_color="transparent")
-        t.pack(fill=tk.X, pady=(25, 15), padx=25)
-        ctk.CTkLabel(t, text="✓", font=('Inter', 20), fg_color="transparent", text_color=self.colors['green']).pack(side=tk.LEFT, padx=(0, 10))
-        ctk.CTkLabel(t, text="Estado y Progreso", font=self.fonts['card_title'], fg_color="transparent", text_color=self.colors['text']).pack(side=tk.LEFT)
-
-        ctk.CTkFrame(sc, fg_color=self.colors['text_light'], height=1).pack(fill=tk.X, pady=(0, 10), padx=25)
-
-        stats = ctk.CTkFrame(sc, fg_color="transparent")
-        stats.pack(fill=tk.BOTH, expand=True, pady=(0, 10), padx=25)
+        stats = ttk.Frame(sc)
+        stats.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         self.stats_frame = stats
-        self.create_stat(stats, "Total", "0", self.colors['blue'], 0)
-        self.create_stat(stats, "Enviados", "0", self.colors['green'], 1)
-        self.create_stat(stats, "Fallidos", "0", self.colors['log_error'], 2)
-        self.create_stat(stats, "Progreso", "0%", self.colors['orange'], 3)
+        self.create_stat(stats, "Total", "0", "primary", 0)
+        self.create_stat(stats, "Enviados", "0", "success", 1)
+        self.create_stat(stats, "Fallidos", "0", "danger", 2)
+        self.create_stat(stats, "Progreso", "0%", "warning", 3)
 
-        self.progress_label = ctk.CTkLabel(sc, text="--/--", font=self.fonts['progress_value'], fg_color="transparent", text_color=self.colors['text'])
-        self.progress_label.pack(anchor='w', pady=(0, 10), padx=25)
+        self.progress_label = ttk.Label(sc, text="--/--", font=("Inter", 16, "bold"), bootstyle="secondary")
+        self.progress_label.pack(anchor='w', pady=(0, 5))
 
-        # Barra de progreso (fondo)
-        bbg = ctk.CTkFrame(sc, fg_color=self.colors['text_light'], height=8, corner_radius=4)
-        bbg.pack(fill=tk.X, pady=(0, 20), padx=25)
-        # Barra de progreso (indicador)
-        self.progress_bar = ctk.CTkFrame(bbg, fg_color=self.colors['green'], height=8, corner_radius=4)
-        self.progress_bar.place(x=0, y=0, relwidth=0, relheight=1)
+        # Barra de progreso
+        self.progress_bar = ttk.Progressbar(sc, orient='horizontal', mode='determinate', bootstyle="success-striped")
+        self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
-        # Tiempos (ahora en una fila)
-        time_frame = ctk.CTkFrame(sc, fg_color="transparent")
-        time_frame.pack(fill=tk.X, padx=25, pady=(0, 5))
-        self.time_elapsed = ctk.CTkLabel(time_frame, text="Trans: --:--:--", font=('Inter', 14), fg_color="transparent", text_color=self.colors['text'])
+        # Tiempos
+        time_frame = ttk.Frame(sc)
+        time_frame.pack(fill=tk.X, pady=(0, 5))
+        self.time_elapsed = ttk.Label(time_frame, text="Trans: --:--:--", font=('Inter', 12), bootstyle="secondary")
         self.time_elapsed.pack(side=tk.LEFT, expand=True, anchor='w')
-        self.time_remaining = ctk.CTkLabel(time_frame, text="Rest: --:--:--", font=('Inter', 14), fg_color="transparent", text_color=self.colors['text'])
+        self.time_remaining = ttk.Label(time_frame, text="Rest: --:--:--", font=('Inter', 12), bootstyle="secondary")
         self.time_remaining.pack(side=tk.LEFT, expand=True, anchor='e')
 
-
         # Estadística de mensajes por WhatsApp
-        self.stat_per_whatsapp = ctk.CTkLabel(sc, text="Mensajes por WhatsApp: --", font=('Inter', 14), fg_color="transparent", text_color=self.colors['text'])
-        self.stat_per_whatsapp.pack(anchor='w', pady=(2, 25), padx=25)
+        self.stat_per_whatsapp = ttk.Label(sc, text="Mensajes por WhatsApp: --", font=('Inter', 12), bootstyle="secondary")
+        self.stat_per_whatsapp.pack(anchor='w', pady=(2, 5))
 
         # Bloque 2: Registro de actividad
-        lc = ctk.CTkFrame(parent, fg_color=self.colors['bg_log'], corner_radius=30)
+        lc = ttk.Labelframe(parent, text=" Registro de actividad ", padding=10)
         lc.pack(fill=tk.BOTH, expand=True, pady=0, padx=10)
         self.log_card_pack_defaults = {'fill': tk.BOTH, 'expand': True, 'pady': 0, 'padx': 10}
         lc.grid_columnconfigure(0, weight=1)
         lc.grid_rowconfigure(1, weight=1)
         self.log_card = lc
 
-        ltf = ctk.CTkFrame(lc, fg_color="transparent")
-        ltf.grid(row=0, column=0, sticky='ew', pady=(25, 15), padx=25)
+        ltf = ttk.Frame(lc)
+        ltf.grid(row=0, column=0, sticky='ew', pady=(0, 10))
         self.log_card_header = ltf
-        self.log_card_header_padding = {'padx': 25, 'pady': (25, 15)}
-        ctk.CTkLabel(ltf, text="▶", font=('Inter', 14), fg_color="transparent", text_color=self.colors['log_info']).pack(side=tk.LEFT, padx=(0, 8))
-        ctk.CTkLabel(ltf, text="Registro de actividad", font=self.fonts['log_title'], fg_color="transparent", text_color=self.colors['log_title_color']).pack(side=tk.LEFT, padx=(0, 5))
+        self.log_card_header_padding = {'pady': (0, 10)}
 
-        self.log_verbosity_btn = ctk.CTkButton(
+        # Buttons in header
+        self.log_verbosity_btn = ttk.Button(
             ltf, text="👁️", command=self.toggle_log_verbosity,
-            font=('Inter', 20), fg_color="transparent", hover_color=self.colors['bg_log'],
-            width=30, height=30, corner_radius=15
+            bootstyle="link"
         )
-        self.log_verbosity_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.log_verbosity_btn.pack(side=tk.LEFT)
 
-        self.toggle_log_view_btn = ctk.CTkButton(
+        self.toggle_log_view_btn = ttk.Button(
             ltf,
             text="Tabla",
             command=self.toggle_log_view,
-            fg_color=self.colors['blue'],
-            hover_color=darken_color(self.colors['blue'], 0.15),
-            text_color=self.colors['text_header_buttons'],
-            font=self.fonts['button_small'],
-            height=32,
-            width=90,
-            corner_radius=14
+            bootstyle="info-outline",
+            width=10
         )
-        self.toggle_log_view_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        self.toggle_log_view_btn.pack(side=tk.RIGHT)
         self.toggle_log_view_btn.configure(state=tk.DISABLED)
 
-        lco = ctk.CTkFrame(lc, fg_color="transparent")
-        lco.grid(row=1, column=0, sticky='nsew', pady=(0, 25), padx=25)
+        # Body
+        lco = ttk.Frame(lc)
+        lco.grid(row=1, column=0, sticky='nsew')
         lco.grid_columnconfigure(0, weight=1)
         lco.grid_rowconfigure(0, weight=1)
         self.log_card_body = lco
-        self.log_card_body_padding = {'padx': 25, 'pady': (0, 25)}
+        self.log_card_body_padding = {'pady': 0}
 
-        self.log_text = ctk.CTkTextbox(lco, fg_color=self.colors['bg_log'], text_color=self.colors['log_text'], font=self.fonts['log_text'], corner_radius=10, activate_scrollbars=True, border_width=1, border_color="#444851")
+        # Log Text Area using ScrolledText
+        self.log_text = ScrolledText(lco, font=('Consolas', 10), autohide=True)
         self.log_text.grid(row=0, column=0, sticky="nsew")
-        self.log_text.tag_config('success', foreground=self.colors['log_success'])
-        self.log_text.tag_config('error', foreground=self.colors['log_error'])
-        self.log_text.tag_config('warning', foreground=self.colors['log_warning'])
-        self.log_text.tag_config('info', foreground=self.colors['log_info'])
 
-        self.log_table_container = ctk.CTkFrame(lco, fg_color=self.colors['bg_log'], corner_radius=10)
+        # Color configuration
+        self.log_text.tag_config('success', foreground='#198754') # Bootstrap success
+        self.log_text.tag_config('error', foreground='#dc3545') # Bootstrap danger
+        self.log_text.tag_config('warning', foreground='#ffc107') # Bootstrap warning
+        self.log_text.tag_config('info', foreground='#0dcaf0') # Bootstrap info
+
+        self.log_table_container = ttk.Frame(lco)
         self.log_table_container.grid(row=0, column=0, sticky="nsew")
         self.log_table_container.grid_columnconfigure(0, weight=1)
         self.log_table_container.grid_rowconfigure(0, weight=1)
@@ -2095,20 +1600,20 @@ class Hermes:
             self.log_table_container,
             columns=("from", "to", "time"),
             show="headings",
-            selectmode="browse"
+            selectmode="browse",
+            bootstyle="primary"
         )
         self.activity_table.heading("from", text="Desde")
         self.activity_table.heading("to", text="Hacia")
         self.activity_table.heading("time", text="Hora")
-        self.activity_table.column("from", anchor="center", width=200)
-        self.activity_table.column("to", anchor="center", width=200)
-        self.activity_table.column("time", anchor="center", width=120)
-        self.activity_table.grid(row=0, column=0, sticky="nsew", padx=(2, 0), pady=2)
+        self.activity_table.column("from", anchor="center", width=120)
+        self.activity_table.column("to", anchor="center", width=120)
+        self.activity_table.column("time", anchor="center", width=80)
+        self.activity_table.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
 
         self.activity_table_scrollbar = ttk.Scrollbar(self.log_table_container, orient=tk.VERTICAL, command=self.activity_table.yview)
         self.activity_table.configure(yscrollcommand=self.activity_table_scrollbar.set)
-        self.activity_table_scrollbar.grid(row=0, column=1, sticky="ns", padx=(0, 2), pady=2)
-        self.configure_activity_table_style()
+        self.activity_table_scrollbar.grid(row=0, column=1, sticky="ns")
 
         self.log_text.configure(state=tk.DISABLED)
         self.log("HΞЯMΞS V1 (Modern) iniciado", 'success')
@@ -2116,7 +1621,7 @@ class Hermes:
         if self.adb_path.get():
             self.log("ADB detectado correctamente", 'success')
         else:
-            self.log("ADB no detectado automáticamente. Asegúrate de que esté en la carpeta o ejecuta INSTALAR.bat", 'warning')
+            self.log("ADB no detectado automáticamente.", 'warning')
 
         if self.log_view_mode == "table":
             self.show_activity_table()
@@ -2294,15 +1799,15 @@ class Hermes:
         item = self.activity_table.insert('', 'end', values=record)
         self.activity_table.see(item)
 
-    def create_stat(self, parent, label, value, color, col):
+    def create_stat(self, parent, label, value, boot_style, col):
         """Crea un widget de estadística en el panel de estado."""
-        box = ctk.CTkFrame(parent, fg_color="transparent")
-        box.grid(row=0, column=col, sticky='nsew', padx=8)
+        box = ttk.Frame(parent)
+        box.grid(row=0, column=col, sticky='nsew', padx=5)
         parent.grid_columnconfigure(col, weight=1)
 
-        ctk.CTkLabel(box, text=label, fg_color="transparent", text_color=self.colors['text_light'], font=self.fonts['stat_label']).pack(pady=(5, 5))
-        vl = ctk.CTkLabel(box, text=value, fg_color="transparent", text_color=color, font=self.fonts['stat_value'])
-        vl.pack(pady=(0, 5))
+        ttk.Label(box, text=label, bootstyle="secondary", font=("Inter", 10)).pack(pady=(0, 2))
+        vl = ttk.Label(box, text=value, bootstyle=boot_style, font=("Inter", 24, "bold"))
+        vl.pack()
 
         if label == "Total": self.stat_total = vl
         elif label == "Enviados": self.stat_sent = vl
@@ -2310,8 +1815,8 @@ class Hermes:
         elif label == "Progreso": self.stat_progress = vl
 
     def _create_spinbox_widget(self, parent, textvariable, min_val=0, max_val=999, step=1):
-        """Crea un widget spinbox personalizado (Entry con botones +/-)."""
-        spinbox_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        """Crea un widget spinbox personalizado usando TTKBootstrap."""
+        spinbox_frame = ttk.Frame(parent)
 
         def decrement_callback():
             try:
@@ -2321,18 +1826,12 @@ class Hermes:
             except tk.TclError:
                 textvariable.set(min_val)
 
-        btn_decr = ctk.CTkButton(spinbox_frame, text="−", width=30, height=30,
-                                 font=(self.fonts['setting_label'][0], 16, 'bold'),
-                                 fg_color="transparent", text_color="#495057",
-                                 hover_color="#e9ecef",
-                                 command=decrement_callback, corner_radius=10)
-        btn_decr.pack(side=tk.LEFT, padx=(0, 2))
+        btn_decr = ttk.Button(spinbox_frame, text="−", width=3,
+                                 bootstyle="secondary-outline",
+                                 command=decrement_callback)
+        btn_decr.pack(side=tk.LEFT, padx=2)
 
-        entry = ctk.CTkEntry(spinbox_frame, textvariable=textvariable, width=50,
-                             font=self.fonts['setting_label'], corner_radius=10,
-                             justify='center',
-                             border_width=0,
-                             fg_color="transparent")
+        entry = ttk.Entry(spinbox_frame, textvariable=textvariable, width=5, justify='center')
         entry.pack(side=tk.LEFT, padx=2)
 
         def increment_callback():
@@ -2343,98 +1842,91 @@ class Hermes:
             except tk.TclError:
                 textvariable.set(min_val)
 
-        btn_incr = ctk.CTkButton(spinbox_frame, text="+", width=30, height=30,
-                                 font=(self.fonts['setting_label'][0], 16, 'bold'),
-                                 fg_color="transparent", text_color="#495057",
-                                 hover_color="#e9ecef",
-                                 command=increment_callback, corner_radius=10)
-        btn_incr.pack(side=tk.LEFT, padx=(2, 0))
+        btn_incr = ttk.Button(spinbox_frame, text="+", width=3,
+                                 bootstyle="secondary-outline",
+                                 command=increment_callback)
+        btn_incr.pack(side=tk.LEFT, padx=2)
 
         return spinbox_frame
 
     def create_setting(self, parent, label, var1, var2, row):
         """Crea una fila de configuración en la tarjeta de 'Tiempo'."""
+        # Configurar grid en el padre si no está configurado (asegurar)
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(parent, text=label, font=self.fonts['setting_label'], fg_color="transparent", text_color=self.colors['text_light']).grid(row=row, column=0, sticky='w', pady=10)
+        ttk.Label(parent, text=label, bootstyle="secondary").grid(row=row, column=0, sticky='w', pady=10)
 
-        ctrls = ctk.CTkFrame(parent, fg_color="transparent")
+        ctrls = ttk.Frame(parent)
         ctrls.grid(row=row, column=1, sticky='e', pady=10, padx=(10, 0))
 
         spinbox1 = self._create_spinbox_widget(ctrls, var1, min_val=1, max_val=300)
         spinbox1.pack(side=tk.LEFT, padx=(0, 8))
 
         if var2:
-            ctk.CTkLabel(ctrls, text="-", font=self.fonts['setting_label'], fg_color="transparent").pack(side=tk.LEFT, padx=(0, 8))
+            ttk.Label(ctrls, text="-").pack(side=tk.LEFT, padx=(0, 8))
             spinbox2 = self._create_spinbox_widget(ctrls, var2, min_val=1, max_val=300)
             spinbox2.pack(side=tk.LEFT)
 
     def _section_bg_color(self):
-        return "#f5f5f7" if not self.dark_mode else "#000000"
+        # Deprecated: Usar estilos TTK
+        return "#ffffff"
 
     def _section_border_color(self):
-        return "#dde1ea" if not self.dark_mode else "#1f2937"
+        # Deprecated: Usar estilos TTK
+        return "#dddddd"
 
     def _build_section(self, parent, row, title, subtitle=None, icon=None):
-        container = ctk.CTkFrame(parent, fg_color="transparent")
-        container.grid(row=row, column=0, sticky="ew", padx=24, pady=(0, 24))
+        """Crea una sección tipo tarjeta con TTKBootstrap."""
+        container = ttk.Frame(parent, padding=10)
+        container.grid(row=row, column=0, sticky="ew", padx=20, pady=(0, 20))
         container.grid_columnconfigure(0, weight=1)
 
-        card = ctk.CTkFrame(
-            container,
-            fg_color=self._section_bg_color(),
-            corner_radius=18,
-            border_width=1,
-            border_color=self._section_border_color()
-        )
+        # Usar Labelframe o Frame con borde para efecto tarjeta
+        card = ttk.Frame(container, style='Card.TFrame', padding=15)
+        # Nota: Si no definimos Card.TFrame, usará el default. Podemos usar borde simple.
+        card.configure(borderwidth=1, relief="solid")
         card.grid(row=0, column=0, sticky="ew")
         card.grid_columnconfigure(0, weight=1)
 
-        header = ctk.CTkFrame(card, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 8))
+        header = ttk.Frame(card)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 15))
         header.grid_columnconfigure(1, weight=1)
-        header.grid_columnconfigure(2, weight=0)
 
         title_present = bool(title)
         if icon:
-            icon_label = ctk.CTkLabel(header, text=icon, font=('Inter', 18), text_color=self.colors['text'])
+            # Icono como Label
+            icon_label = ttk.Label(header, text=icon, font=('Inter', 18))
             rows = (1 if title_present else 0) + (1 if subtitle else 0)
             icon_label.grid(row=0, column=0, rowspan=rows or 1, padx=(0, 12), sticky="n")
 
         current_row = 0
         if title_present:
-            title_label = ctk.CTkLabel(header, text=title, font=self.fonts['card_title'], text_color=self.colors['text'])
+            title_label = ttk.Label(header, text=title, font=("Inter", 16, "bold"), bootstyle="primary")
             title_label.grid(row=current_row, column=1, sticky="w")
             current_row += 1
 
         if subtitle:
-            subtitle_label = ctk.CTkLabel(header, text=subtitle, font=self.fonts['setting_label'], text_color=self.colors['text_light'])
-            pady = (6, 0) if title_present else (0, 0)
+            subtitle_label = ttk.Label(header, text=subtitle, font=("Inter", 10), bootstyle="secondary")
+            pady = (2, 0) if title_present else (0, 0)
             subtitle_label.grid(row=current_row, column=1, sticky="w", pady=pady)
 
         return card, header
 
     def _create_step_badge(self, parent, number):
-        badge_frame = ctk.CTkFrame(
-            parent,
-            width=34,
-            height=34,
-            corner_radius=17,
-            fg_color="transparent",
-            border_width=1,
-            border_color=self._section_border_color()
-        )
-        badge_frame.grid_propagate(False)
+        """Crea un badge circular para los pasos."""
+        badge_frame = ttk.Frame(parent)
 
-        badge_label = ctk.CTkLabel(
+        # Usar Label con estilo inverso para parecer un badge lleno
+        # bootstyle="primary-inverse" da fondo azul y texto blanco
+        badge_label = ttk.Label(
             badge_frame,
             text=str(number),
-            font=self.fonts['progress_value'],
-            text_color=self.colors['text'],
-            fg_color="transparent"
+            font=("Inter", 12, "bold"),
+            bootstyle="primary-inverse",
+            padding=(10, 5) # Padding para hacerlo rectangular/circular
         )
-        badge_label.place(relx=0.5, rely=0.5, anchor="c")
+        badge_label.pack()
 
         return badge_frame
 
@@ -2622,33 +2114,28 @@ class Hermes:
             self.time_remaining.configure(text="Rest: --:--:--")
 
     def toggle_dark_mode(self):
-        """Alterna entre modo claro y oscuro."""
-        self.dark_mode = not self.dark_mode
+        """Alterna entre modo claro y oscuro usando temas TTK."""
+        # Detectar tema actual
+        current_theme = self.style.theme.name
         
-        # Cambiar paleta de colores
-        if self.dark_mode:
-            self.colors = self.colors_dark.copy()
-            ctk.set_appearance_mode("dark")
+        # Light themes: litera, cosmo, flatly
+        # Dark themes: darkly, superhero, cyborg
+        
+        if current_theme == 'litera':
+            new_theme = 'darkly'
+            self.dark_mode = True
         else:
-            self.colors = self.colors_light.copy()
-            ctk.set_appearance_mode("light")
+            new_theme = 'litera'
+            self.dark_mode = False
+
+        self.style.theme_use(new_theme)
+        self.log(f"Tema cambiado a: {new_theme}", 'info')
         
-        # Actualizar hover colors
-        self.hover_colors = {k: darken_color(v, 0.18) for k, v in self.colors.items() if k.startswith('action_')}
-        
-        # Recrear la interfaz
-        # Destruir widgets existentes
-        for widget in self.root.winfo_children():
-            widget.destroy()
-        
-        # Recrear la interfaz
-        self.setup_ui()
-        
-        # Actualizar icono del botón en Start Menu
-        if hasattr(self, 'dark_mode_btn_start') and self.dark_mode_btn_start:
-            self.dark_mode_btn_start.configure(text="🌙" if self.dark_mode else "☀️")
-        
-        self.log(f"Modo {'Oscuro' if self.dark_mode else 'Claro'} activado", 'info')
+        # Actualizar icono si existe (en Start Menu)
+        if hasattr(self, 'dark_mode_text_id') and hasattr(self, 'starfield_canvas'):
+             # Como el start menu va a ser rediseñado sin canvas, esto cambiará.
+             # Por ahora dejamos un placeholder.
+             pass
 
     def toggle_time_settings(self):
         """Muestra u oculta los ajustes de espera secundarios."""
@@ -3881,238 +3368,218 @@ class Hermes:
         self.show_sms_view()
 
     def setup_fidelizado_view(self, parent):
-        """Construye la interfaz de la vista Fidelizado."""
+        """Construye la vista de Fidelizado (Bucles Blast V2)."""
         # Cargar mensajes predeterminados si es la primera vez
         if not self.manual_messages_numbers and not self.manual_messages_groups:
             self._load_default_messages()
 
-        # Contenedor principal de la vista Fidelizado
-        fidelizado_container = ctk.CTkFrame(parent, fg_color="transparent")
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(0, weight=1)
+
+        # Contenedor principal
+        fidelizado_container = ttk.Frame(parent)
         fidelizado_container.pack(fill=tk.BOTH, expand=True)
 
-        # Contenido principal de Fidelizado
-        content = ctk.CTkFrame(
-            fidelizado_container,
-            fg_color=self.colors['bg_card'],
-            corner_radius=32,
-            border_width=1,
-            border_color=self._section_border_color()
-        )
-        self.fidelizado_main_card = content
-        content.pack(fill=tk.X, expand=False, padx=10, pady=(10, 0))
-        content.grid_columnconfigure(0, weight=1)
+        # Contenido principal (Card)
+        content = ttk.Frame(fidelizado_container)
+        content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # --- Header (Volver y Título) ---
-        header_frame = ctk.CTkFrame(content, fg_color="transparent")
+        # --- Header ---
+        header_frame = ttk.Frame(content)
         header_frame.pack(fill=tk.X, padx=30, pady=(15, 10))
 
-        self.back_to_traditional_btn = ctk.CTkButton(header_frame, text="←",
-                                      width=40,
-                                      command=self.show_traditional_view,
-                                      fg_color=self.colors['bg'],
-                                      text_color=self.colors['text'],
-                                      font=('Inter', 16, 'bold'),
-                                      corner_radius=20,
-                                      hover_color=darken_color(self.colors['bg'], 0.1))
+        self.back_to_traditional_btn = ttk.Button(
+            header_frame,
+            text="← Volver",
+            command=self.show_traditional_view,
+            bootstyle="link"
+        )
         self.back_to_traditional_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-        ctk.CTkLabel(header_frame, text="Fidelizado", font=('Inter', 26, 'bold'), text_color=self.colors['text']).pack(side=tk.LEFT)
+        ttk.Label(header_frame, text="Fidelizado", font=('Inter', 26, 'bold')).pack(side=tk.LEFT)
 
         # --- STEP 1: DISPOSITIVOS ---
-        step1_frame = ctk.CTkFrame(content, fg_color="transparent")
-        step1_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
+        actions_section, _ = self._build_section(content, 1, None, "Selecciona los dispositivos y configura el envío.", icon="🚀")
 
-        # Header Step 1
-        s1_header = ctk.CTkFrame(step1_frame, fg_color="transparent")
-        s1_header.pack(fill=tk.X, pady=(0, 5))
-        self._create_step_badge(s1_header, 1).pack(side=tk.LEFT, padx=(0, 10))
-        ctk.CTkLabel(s1_header, text="Dispositivos", font=('Inter', 16, 'bold'), text_color=self.colors['text']).pack(side=tk.LEFT)
+        # Wrapper para los pasos
+        steps_wrapper = ttk.Frame(actions_section)
+        steps_wrapper.grid(row=1, column=0, sticky="ew", padx=20, pady=(10, 10))
+        steps_wrapper.grid_columnconfigure(0, weight=1)
 
-        # Content Step 1
-        device_card = ctk.CTkFrame(step1_frame, fg_color=self.colors['bg'], corner_radius=15)
-        device_card.pack(fill=tk.X, pady=(5, 10))
+        # Paso 1
+        step1_row = ttk.Frame(steps_wrapper)
+        step1_row.grid(row=0, column=0, sticky="ew", pady=6)
+        step1_row.grid_columnconfigure(1, weight=1)
 
-        device_inner = ctk.CTkFrame(device_card, fg_color="transparent")
-        device_inner.pack(fill=tk.X, padx=15, pady=15)
+        self._create_step_badge(step1_row, 1).grid(row=0, column=0, padx=(0, 12))
 
-        self.fidelizado_detect_btn = ctk.CTkButton(device_inner, text="🔍 Detectar Dispositivos",
-                                                  command=self.detect_devices,
-                                                  font=self.fonts['button'],
-                                                  fg_color=self.colors['action_detect'],
-                                                  hover_color=self.hover_colors['action_detect'],
-                                                  height=40)
-        self.fidelizado_detect_btn.pack(fill='x', pady=(0, 10))
+        step1_content = ttk.Frame(step1_row)
+        step1_content.grid(row=0, column=1, sticky="ew")
+        step1_content.grid_columnconfigure(0, weight=1)
 
-        self.fidelizado_device_list_label = ctk.CTkLabel(device_inner, text="Teléfonos - 0",
-                                                        font=self.fonts['setting_label'],
-                                                        text_color=self.colors['text_light'],
-                                                        wraplength=350,
-                                                        justify='left')
+        self.fidelizado_detect_btn = ttk.Button(
+            step1_content,
+            text="🔍 Detectar Dispositivos",
+            command=self.detect_devices,
+            bootstyle="primary"
+        )
+        self.fidelizado_detect_btn.pack(fill=tk.X, pady=(0, 5))
+
+        self.fidelizado_device_list_label = ttk.Label(
+            step1_content,
+            text="Teléfonos - 0",
+            font=("Inter", 10),
+            bootstyle="secondary"
+        )
         self.fidelizado_device_list_label.pack(anchor='w')
 
         # --- STEP 2: CONFIGURACIÓN ---
-        step2_frame = ctk.CTkFrame(content, fg_color="transparent")
-        step2_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
+        step2_row = ttk.Frame(steps_wrapper)
+        step2_row.grid(row=1, column=0, sticky="ew", pady=(10, 6))
+        step2_row.grid_columnconfigure(1, weight=1)
 
-        s2_header = ctk.CTkFrame(step2_frame, fg_color="transparent")
-        s2_header.pack(fill=tk.X, pady=(0, 5))
-        self._create_step_badge(s2_header, 2).pack(side=tk.LEFT, padx=(0, 10))
-        ctk.CTkLabel(s2_header, text="Configuración", font=('Inter', 16, 'bold'), text_color=self.colors['text']).pack(side=tk.LEFT)
+        self._create_step_badge(step2_row, 2).grid(row=0, column=0, padx=(0, 12), sticky="n")
 
-        config_card = ctk.CTkFrame(step2_frame, fg_color=self.colors['bg'], corner_radius=15)
-        config_card.pack(fill=tk.X, pady=(5, 10))
+        config_card = ttk.Labelframe(step2_row, text=" Configuración ", padding=10)
+        config_card.grid(row=0, column=1, sticky="ew")
 
-        config_grid = ctk.CTkFrame(config_card, fg_color="transparent")
-        config_grid.pack(fill=tk.X, padx=15, pady=15)
+        # Mode Selection
+        mode_frame = ttk.Frame(config_card)
+        mode_frame.pack(fill=tk.X, pady=(5, 5))
+        ttk.Label(mode_frame, text="Envíos:", bootstyle="secondary").pack(side=tk.LEFT, padx=(0, 10))
 
-        # Envíos (Mode)
-        mode_container = ctk.CTkFrame(config_grid, fg_color="transparent")
-        mode_container.pack(fill=tk.X, pady=(0, 10))
-        ctk.CTkLabel(mode_container, text="Envíos:", font=self.fonts['button'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
-
-        fidelizado_modes = ["Números", "Grupos"] # Plural
-        # Internal mapping will be handled in logic
-        current_mode_ui = "Números" # Default
+        fidelizado_modes = ["Números", "Grupos"]
+        current_mode_ui = "Números"
         self.fidelizado_mode_var = tk.StringVar(value=current_mode_ui)
 
-        mode_menu = ctk.CTkOptionMenu(
-            mode_container,
-            variable=self.fidelizado_mode_var,
-            values=fidelizado_modes,
-            font=self.fonts['button'],
-            dropdown_font=self.fonts['setting_label'],
-            fg_color=self.colors['bg_card'],
-            button_color=self.colors['blue'],
-            button_hover_color=darken_color(self.colors['blue'], 0.15),
-            text_color=self.colors['text'],
-            height=30,
-            width=120 # Resize width
+        mode_menu = ttk.OptionMenu(
+            mode_frame,
+            self.fidelizado_mode_var,
+            current_mode_ui,
+            *fidelizado_modes,
+            bootstyle="info"
         )
         mode_menu.pack(side=tk.LEFT)
 
-        # Conversación Mode (Uno a uno / Uno a muchos)
-        self.numeros_mode_container = ctk.CTkFrame(config_grid, fg_color="transparent")
-        self.numeros_mode_container.pack(fill=tk.X, pady=(0, 10))
-        ctk.CTkLabel(self.numeros_mode_container, text="Conversación:", font=self.fonts['button'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
-        ctk.CTkRadioButton(self.numeros_mode_container, text="Uno a uno", variable=self.fidelizado_numeros_mode, value="Uno a uno", font=self.fonts['setting_label'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
-        ctk.CTkRadioButton(self.numeros_mode_container, text="Uno a muchos", variable=self.fidelizado_numeros_mode, value="Uno a muchos", font=self.fonts['setting_label'], text_color=self.colors['text']).pack(side=tk.LEFT)
+        # Conversación Mode
+        self.numeros_mode_container = ttk.Frame(config_card)
+        self.numeros_mode_container.pack(fill=tk.X, pady=(5, 5))
+        ttk.Label(self.numeros_mode_container, text="Conversación:", bootstyle="secondary").pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Radiobutton(self.numeros_mode_container, text="Uno a uno", variable=self.fidelizado_numeros_mode, value="Uno a uno").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(self.numeros_mode_container, text="Uno a muchos", variable=self.fidelizado_numeros_mode, value="Uno a muchos").pack(side=tk.LEFT)
 
         # WhatsApp Select
-        wa_container = ctk.CTkFrame(config_grid, fg_color="transparent")
-        wa_container.pack(fill=tk.X, pady=(0, 10))
-        ctk.CTkLabel(wa_container, text="WhatsApp a usar:", font=self.fonts['button'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
-        self.fidelizado_whatsapp_menu = ctk.CTkSegmentedButton(wa_container, variable=self.whatsapp_mode, values=["Normal", "Business", "Ambas", "Todas"], font=self.fonts['button_small'])
-        self.fidelizado_whatsapp_menu.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        wa_frame = ttk.Frame(config_card)
+        wa_frame.pack(fill=tk.X, pady=(5, 5))
+        ttk.Label(wa_frame, text="WhatsApp a usar:", bootstyle="secondary").pack(side=tk.LEFT, padx=(0, 10))
+
+        # Segmented button equivalent
+        self.fidelizado_whatsapp_menu = ttk.Frame(wa_frame) # Container for radios
+        self.fidelizado_whatsapp_menu.pack(side=tk.LEFT)
+        for val in ["Normal", "Business", "Ambas", "Todas"]:
+             ttk.Radiobutton(self.fidelizado_whatsapp_menu, text=val, variable=self.whatsapp_mode, value=val, style="Toolbutton").pack(side=tk.LEFT, padx=2)
 
         # Bucles y Ciclos
-        loops_row = ctk.CTkFrame(config_grid, fg_color="transparent")
-        loops_row.pack(fill=tk.X, pady=(0, 10))
+        loops_row = ttk.Frame(config_card)
+        loops_row.pack(fill=tk.X, pady=(5, 5))
 
-        self.loops_container = ctk.CTkFrame(loops_row, fg_color="transparent")
-        self.loops_container.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ctk.CTkLabel(self.loops_container, text="Bucle:", font=self.fonts['button'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
+        self.loops_container = ttk.Frame(loops_row)
+        self.loops_container.pack(side=tk.LEFT)
+        ttk.Label(self.loops_container, text="Bucle:", bootstyle="secondary").pack(side=tk.LEFT, padx=(0, 5))
         self.manual_loops_var = SafeIntVar(value=max(1, self.manual_loops))
         self.manual_loops_var.trace_add('write', self.update_per_whatsapp_stat)
         self._create_spinbox_widget(self.loops_container, self.manual_loops_var, min_val=1, max_val=100).pack(side=tk.LEFT)
 
-        self.cycles_container = ctk.CTkFrame(loops_row, fg_color="transparent")
-        self.cycles_container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(20, 0))
-        ctk.CTkLabel(self.cycles_container, text="Ciclos:", font=self.fonts['button'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
+        self.cycles_container = ttk.Frame(loops_row)
+        self.cycles_container.pack(side=tk.LEFT, padx=(20, 0))
+        ttk.Label(self.cycles_container, text="Ciclos:", bootstyle="secondary").pack(side=tk.LEFT, padx=(0, 5))
         self.manual_cycles_var = SafeIntVar(value=1)
         self._create_spinbox_widget(self.cycles_container, self.manual_cycles_var, min_val=1, max_val=100).pack(side=tk.LEFT)
 
         # Delays
-        delay_container = ctk.CTkFrame(config_grid, fg_color="transparent")
-        delay_container.pack(fill=tk.X, pady=(0, 10))
-        ctk.CTkLabel(delay_container, text="Retardo Envíos (s):", font=self.fonts['button'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 10))
-        sp_frame = ctk.CTkFrame(delay_container, fg_color="transparent")
-        sp_frame.pack(side=tk.LEFT)
-        self._create_spinbox_widget(sp_frame, self.fidelizado_send_delay_min, 1, 300).pack(side=tk.LEFT)
-        ctk.CTkLabel(sp_frame, text="-", font=self.fonts['setting_label'], fg_color="transparent").pack(side=tk.LEFT, padx=5)
-        self._create_spinbox_widget(sp_frame, self.fidelizado_send_delay_max, 1, 300).pack(side=tk.LEFT)
+        delay_container = ttk.Frame(config_card)
+        delay_container.pack(fill=tk.X, pady=(5, 5))
+        ttk.Label(delay_container, text="Retardo Envíos (s):", bootstyle="secondary").pack(side=tk.LEFT, padx=(0, 5))
+        self._create_spinbox_widget(delay_container, self.fidelizado_send_delay_min, 1, 300).pack(side=tk.LEFT)
+        ttk.Label(delay_container, text="-").pack(side=tk.LEFT, padx=5)
+        self._create_spinbox_widget(delay_container, self.fidelizado_send_delay_max, 1, 300).pack(side=tk.LEFT)
 
-        # --- Controles de Variante Mixto (inicialmente ocultos) ---
-        self.mixto_variant_container = ctk.CTkFrame(config_grid, fg_color="transparent")
-        ctk.CTkLabel(self.mixto_variant_container, text="Variante Modo Mixto:", font=self.fonts['setting_label'], text_color=self.colors['text']).pack(anchor='w', pady=(0, 8))
-        mixto_radio_frame = ctk.CTkFrame(self.mixto_variant_container, fg_color="transparent")
+        # Mixto Variant
+        self.mixto_variant_container = ttk.Frame(config_card)
+        ttk.Label(self.mixto_variant_container, text="Variante Modo Mixto:", bootstyle="secondary").pack(anchor='w', pady=(5, 2))
+        mixto_radio_frame = ttk.Frame(self.mixto_variant_container)
         mixto_radio_frame.pack(anchor='w')
-        ctk.CTkRadioButton(mixto_radio_frame, text="1G:1N", variable=self.mixto_variant, value=1, font=self.fonts['setting_label'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 15))
-        ctk.CTkRadioButton(mixto_radio_frame, text="2G:1N", variable=self.mixto_variant, value=2, font=self.fonts['setting_label'], text_color=self.colors['text']).pack(side=tk.LEFT, padx=(0, 15))
-        ctk.CTkRadioButton(mixto_radio_frame, text="3G:1N", variable=self.mixto_variant, value=3, font=self.fonts['setting_label'], text_color=self.colors['text']).pack(side=tk.LEFT)
+        ttk.Radiobutton(mixto_radio_frame, text="1G:1N", variable=self.mixto_variant, value=1).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(mixto_radio_frame, text="2G:1N", variable=self.mixto_variant, value=2).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(mixto_radio_frame, text="3G:1N", variable=self.mixto_variant, value=3).pack(side=tk.LEFT)
 
-        # --- Controles de Envío Simultáneo (Grupos) ---
-        self.simultaneous_mode_container = ctk.CTkFrame(config_grid, fg_color="transparent")
-        # Se mostrará condicionalmente en _update_fidelizado_ui_mode
-        self.simultaneous_switch = ctk.CTkSwitch(
+        # Simultaneous Controls
+        self.simultaneous_mode_container = ttk.Frame(config_card)
+        self.simultaneous_switch = ttk.Checkbutton(
             self.simultaneous_mode_container,
             text="🚀 Envío Simultáneo (Por tandas)",
             variable=self.simultaneous_mode,
-            font=self.fonts['button'],
-            text_color=self.colors['text']
+            bootstyle="round-toggle"
         )
-        self.simultaneous_switch.pack(anchor='w')
+        self.simultaneous_switch.pack(anchor='w', pady=5)
 
-        # --- Controles de Envío Simultáneo (Uno a Muchos) ---
-        self.uno_a_muchos_simultaneous_container = ctk.CTkFrame(config_grid, fg_color="transparent")
-        # Se mostrará condicionalmente en _update_fidelizado_ui_mode cuando sea modo NUMEROS + Uno a muchos
-        self.uno_a_muchos_simultaneous_switch = ctk.CTkSwitch(
+        self.uno_a_muchos_simultaneous_container = ttk.Frame(config_card)
+        self.uno_a_muchos_simultaneous_switch = ttk.Checkbutton(
             self.uno_a_muchos_simultaneous_container,
             text="🚀 Envío Simultáneo (Todos a un número)",
             variable=self.simultaneous_mode,
-            font=self.fonts['button'],
-            text_color=self.colors['text']
+            bootstyle="round-toggle"
         )
-        self.uno_a_muchos_simultaneous_switch.pack(anchor='w')
+        self.uno_a_muchos_simultaneous_switch.pack(anchor='w', pady=5)
 
         # --- STEP 3: CARGA ---
-        step3_frame = ctk.CTkFrame(content, fg_color="transparent")
-        step3_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
+        step3_row = ttk.Frame(steps_wrapper)
+        step3_row.grid(row=2, column=0, sticky="ew", pady=(10, 6))
+        step3_row.grid_columnconfigure(1, weight=1)
 
-        # Header Step 3
-        s3_header = ctk.CTkFrame(step3_frame, fg_color="transparent")
-        s3_header.pack(fill=tk.X, pady=(0, 5))
-        self._create_step_badge(s3_header, 3).pack(side=tk.LEFT, padx=(0, 10))
-        ctk.CTkLabel(s3_header, text="Carga", font=('Inter', 16, 'bold'), text_color=self.colors['text']).pack(side=tk.LEFT)
+        self._create_step_badge(step3_row, 3).grid(row=0, column=0, padx=(0, 12), sticky="n")
 
-        # Content Step 3
-        self.fidelizado_carga_section = ctk.CTkFrame(step3_frame, fg_color=self.colors['bg'], corner_radius=15)
-        self.fidelizado_carga_section.pack(fill=tk.X, pady=(5, 10))
+        self.fidelizado_carga_section = ttk.Labelframe(step3_row, text=" Carga de Datos ", padding=10)
+        self.fidelizado_carga_section.grid(row=0, column=1, sticky="ew")
 
-        # File Loader
-        self.fidelizado_messages_container = ctk.CTkFrame(self.fidelizado_carga_section, fg_color="transparent")
-        self.fidelizado_messages_container.pack(fill=tk.X, padx=15, pady=15)
+        # Load Button & Count
+        load_frame = ttk.Frame(self.fidelizado_carga_section)
+        load_frame.pack(fill=tk.X, pady=(0, 10))
 
-        load_msg_frame = ctk.CTkFrame(self.fidelizado_messages_container, fg_color="transparent")
-        load_msg_frame.pack(fill=tk.X, pady=(0, 10))
-
-        load_messages_btn = ctk.CTkButton(load_msg_frame, text="Cargar Archivo Mensajes",
-                                          command=self._load_fidelizado_messages_from_file,
-                                          font=self.fonts['button'],
-                                          fg_color=self.colors['blue'],
-                                          hover_color=darken_color(self.colors['blue'], 0.15),
-                                          height=35)
+        load_messages_btn = ttk.Button(
+            load_frame,
+            text="Cargar Archivo Mensajes",
+            command=self._load_fidelizado_messages_from_file,
+            bootstyle="info"
+        )
         load_messages_btn.pack(side=tk.LEFT)
 
-        self.fidelizado_message_count_label = ctk.CTkLabel(load_msg_frame, text="", font=self.fonts['setting_label'], text_color=self.colors['text'])
+        self.fidelizado_message_count_label = ttk.Label(load_frame, text="", bootstyle="secondary")
         self.fidelizado_message_count_label.pack(side=tk.LEFT, padx=15)
 
-        # Manual Inputs Frame (Holds Numbers and Groups boxes)
-        self.fidelizado_manual_inputs_frame = ctk.CTkFrame(self.fidelizado_messages_container, fg_color="transparent")
+        # Manual Inputs
+        self.fidelizado_manual_inputs_frame = ttk.Frame(self.fidelizado_carga_section)
         self.fidelizado_manual_inputs_frame.pack(fill=tk.BOTH, expand=True)
 
         # Numbers Box
-        self.fidelizado_numbers_frame = ctk.CTkFrame(self.fidelizado_manual_inputs_frame, fg_color="transparent")
+        self.fidelizado_numbers_frame = ttk.Frame(self.fidelizado_manual_inputs_frame)
         self.fidelizado_numbers_frame.pack(fill=tk.X, pady=(0, 5))
-        ctk.CTkLabel(self.fidelizado_numbers_frame, text="Números", font=('Inter', 14, 'bold'), text_color=self.colors['text']).pack(anchor='w')
-        self.fidelizado_numbers_text = ctk.CTkTextbox(self.fidelizado_numbers_frame, font=('Inter', 13), corner_radius=10, border_width=1, border_color="#cccccc", wrap=tk.WORD, height=80)
+        ttk.Label(self.fidelizado_numbers_frame, text="Números").pack(anchor='w')
+
+        self.fidelizado_numbers_text = ScrolledText(self.fidelizado_numbers_frame, height=5, font=('Consolas', 10))
         self.fidelizado_numbers_text.pack(fill=tk.X, pady=(5,0))
-        self.fidelizado_numbers_text.bind("<<Modified>>", self._on_fidelizado_numbers_changed)
+        # Bind event for text change (ScrolledText wrapper might need access to underlying widget)
+        # ttkbootstrap ScrolledText delegates mostly to Text, but let's check.
+        # It inherits from ScrolledText.
+        self.fidelizado_numbers_text.text.bind("<<Modified>>", self._on_fidelizado_numbers_changed)
 
         # Groups Box
-        self.fidelizado_groups_frame = ctk.CTkFrame(self.fidelizado_manual_inputs_frame, fg_color="transparent")
+        self.fidelizado_groups_frame = ttk.Frame(self.fidelizado_manual_inputs_frame)
         self.fidelizado_groups_frame.pack(fill=tk.X, pady=(5, 0))
-        ctk.CTkLabel(self.fidelizado_groups_frame, text="Links / Grupos", font=('Inter', 14, 'bold'), text_color=self.colors['text']).pack(anchor='w')
-        self.fidelizado_groups_text = ctk.CTkTextbox(self.fidelizado_groups_frame, font=('Inter', 13), corner_radius=10, border_width=1, border_color="#cccccc", wrap=tk.WORD, height=80)
+        ttk.Label(self.fidelizado_groups_frame, text="Links / Grupos").pack(anchor='w')
+
+        self.fidelizado_groups_text = ScrolledText(self.fidelizado_groups_frame, height=5, font=('Consolas', 10))
         self.fidelizado_groups_text.pack(fill=tk.X, pady=(5,0))
 
         initial_message_count = len(self.manual_messages_numbers)
@@ -4122,64 +3589,83 @@ class Hermes:
             self.fidelizado_message_count_label.configure(text="⚠️ No hay mensajes cargados")
 
         # --- STEP 4: ACCIONES ---
-        step4_frame = ctk.CTkFrame(content, fg_color="transparent")
-        step4_frame.pack(fill=tk.X, padx=20, pady=(10, 20))
+        step4_row = ttk.Frame(steps_wrapper)
+        step4_row.grid(row=3, column=0, sticky="ew", pady=(10, 6))
+        step4_row.grid_columnconfigure(1, weight=1)
 
-        s4_header = ctk.CTkFrame(step4_frame, fg_color="transparent")
-        s4_header.pack(fill=tk.X, pady=(0, 5))
-        self._create_step_badge(s4_header, 4).pack(side=tk.LEFT, padx=(0, 10))
-        ctk.CTkLabel(s4_header, text="Iniciar", font=('Inter', 16, 'bold'), text_color=self.colors['text']).pack(side=tk.LEFT)
+        self._create_step_badge(step4_row, 4).grid(row=0, column=0, padx=(0, 12), sticky="n")
 
-        self.actions_frame = ctk.CTkFrame(step4_frame, fg_color="transparent")
-        self.actions_frame.pack(fill=tk.X, pady=(5, 0))
+        actions_container = ttk.Frame(step4_row)
+        actions_container.grid(row=0, column=1, sticky="ew")
 
-        self.fidelizado_btn_start = ctk.CTkButton(self.actions_frame, text="▶ INICIAR ENVÍO FIDELIZADO", command=self.start_fidelizado_sending, fg_color=self.colors['action_start'], hover_color=self.hover_colors['action_start'], text_color=self.colors['text_header_buttons'], font=self.fonts['button'], corner_radius=10, height=50)
+        self.actions_frame = ttk.Frame(actions_container)
+        self.actions_frame.pack(fill=tk.X)
+
+        self.fidelizado_btn_start = ttk.Button(
+            self.actions_frame,
+            text="▶ INICIAR ENVÍO FIDELIZADO",
+            command=self.start_fidelizado_sending,
+            bootstyle="success",
+            width=30
+        )
         self.fidelizado_btn_start.pack(fill=tk.X, pady=5)
 
-        self.unirse_grupos_btn = ctk.CTkButton(self.actions_frame, text="🔗 UNIRSE A GRUPOS", command=self.start_unirse_grupos, fg_color=self.colors['action_detect'], hover_color=self.hover_colors['action_detect'], text_color=self.colors['text_header_buttons'], font=self.fonts['button'], corner_radius=10, height=50)
+        self.unirse_grupos_btn = ttk.Button(
+            self.actions_frame,
+            text="🔗 UNIRSE A GRUPOS",
+            command=self.start_unirse_grupos,
+            bootstyle="primary",
+            width=30
+        )
         self.unirse_grupos_btn.pack(fill=tk.X, pady=5)
 
-        self.control_buttons_frame = ctk.CTkFrame(step4_frame, fg_color="transparent")
-        self.fidelizado_btn_pause = ctk.CTkButton(self.control_buttons_frame, text="⏸  PAUSAR", command=self.pause_sending, fg_color=self.colors['action_pause'], hover_color=self.hover_colors['action_pause'], text_color=self.colors['text_header_buttons'], font=self.fonts['button'], corner_radius=10, height=45)
+        self.control_buttons_frame = ttk.Frame(actions_container)
+
+        self.fidelizado_btn_pause = ttk.Button(
+            self.control_buttons_frame,
+            text="⏸  PAUSAR",
+            command=self.pause_sending,
+            bootstyle="warning"
+        )
         self.fidelizado_btn_pause.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
-        self.fidelizado_btn_stop = ctk.CTkButton(self.control_buttons_frame, text="⏹  CANCELAR", command=self.stop_sending, fg_color=self.colors['action_cancel'], hover_color=self.hover_colors['action_cancel'], text_color=self.colors['text_header_buttons'], font=self.fonts['button'], corner_radius=10, height=45)
+        self.fidelizado_btn_stop = ttk.Button(
+            self.control_buttons_frame,
+            text="⏹  CANCELAR",
+            command=self.stop_sending,
+            bootstyle="danger"
+        )
         self.fidelizado_btn_stop.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
 
-        self.control_buttons_frame.pack(fill=tk.X, pady=(5, 0))
-        self.control_buttons_frame.pack_forget() # Initially hidden
+        self.control_buttons_frame.pack_forget()
 
         # --- Lógica de la Vista ---
         self.fidelizado_mode_var.trace_add('write', self._update_fidelizado_ui_mode)
-        self.fidelizado_numeros_mode.trace_add('write', self._update_fidelizado_ui_mode) # NUEVO: trace para los radio buttons
+        self.fidelizado_numeros_mode.trace_add('write', self._update_fidelizado_ui_mode)
         self._update_fidelizado_ui_mode()
         self._populate_fidelizado_inputs()
 
     def _on_fidelizado_numbers_changed(self, event=None):
         """Se activa cuando el contenido de la caja de texto de números cambia."""
-        self.manual_inputs_numbers = [line.strip() for line in self.fidelizado_numbers_text.get("1.0", tk.END).splitlines() if line.strip()]
-        self._update_fidelizado_ui_mode()
-        # Marcar el widget para que el evento no se dispare recursivamente
-        self.fidelizado_numbers_text.edit_modified(False)
+        # ScrolledText -> text widget
+        if hasattr(self, 'fidelizado_numbers_text'):
+             content = self.fidelizado_numbers_text.text.get("1.0", tk.END)
+             self.manual_inputs_numbers = [line.strip() for line in content.splitlines() if line.strip()]
+             self._update_fidelizado_ui_mode()
+             # Marcar el widget para que el evento no se dispare recursivamente
+             self.fidelizado_numbers_text.text.edit_modified(False)
 
     def _toggle_fidelizado_carga_section(self):
-        """Alterna la visibilidad del bloque de cargas dentro del panel de configuración."""
-        if not hasattr(self, 'fidelizado_carga_section') or not hasattr(self, 'fidelizado_carga_toggle_btn'):
-            return
-
-        if self.fidelizado_carga_section.winfo_manager():
-            self.fidelizado_carga_section.pack_forget()
-            self.fidelizado_carga_toggle_btn.configure(text="📥 Carga ▶")
-        else:
-            self.fidelizado_carga_section.pack(fill=tk.X, padx=20, pady=(0, 20))
-            self.fidelizado_carga_toggle_btn.configure(text="📥 Carga ▼")
+        """Alterna la visibilidad del bloque de cargas."""
+        # Not used in new layout as it is always visible or managed differently,
+        # keeping for compatibility if invoked elsewhere
+        pass
 
     def _update_fidelizado_ui_mode(self, *args):
         """Muestra u oculta los widgets y reorganiza el layout según el modo Fidelizado seleccionado."""
         mode_ui = self.fidelizado_mode_var.get()
         numeros_submode = self.fidelizado_numeros_mode.get()
 
-        # Map UI values to internal keys. Note the plurals.
         mode_map_from_ui = {"Números": "NUMEROS", "Grupos": "GRUPOS", "Mixto": "MIXTO"}
         self.fidelizado_mode = mode_map_from_ui.get(mode_ui, "NUMEROS")
         self.set_activity_table_enabled(self.fidelizado_mode == "NUMEROS")
@@ -4191,41 +3677,38 @@ class Hermes:
         if self.fidelizado_mode == "NUMEROS":
             self.fidelizado_numbers_frame.pack(fill=tk.X, pady=(0, 5))
             self.fidelizado_groups_frame.pack_forget()
-
             if hasattr(self, 'numeros_mode_container'):
-                self.numeros_mode_container.pack(fill=tk.X, pady=(0, 10))
+                self.numeros_mode_container.pack(fill=tk.X, pady=(5, 5))
 
         elif self.fidelizado_mode == "GRUPOS":
             self.fidelizado_numbers_frame.pack_forget()
             self.fidelizado_groups_frame.pack(fill=tk.X, pady=(5, 0))
-
             if hasattr(self, 'numeros_mode_container'):
                 self.numeros_mode_container.pack_forget()
 
         elif self.fidelizado_mode == "MIXTO":
             self.fidelizado_numbers_frame.pack(fill=tk.X, pady=(0, 5))
             self.fidelizado_groups_frame.pack(fill=tk.X, pady=(5, 0))
-
             if hasattr(self, 'numeros_mode_container'):
                 self.numeros_mode_container.pack_forget()
 
         # --- 2. Visibilidad de Configuración Adicional ---
         if show_mixto_variant:
             if not self.mixto_variant_container.winfo_manager():
-                self.mixto_variant_container.pack(fill=tk.X, pady=(0, 10))
+                self.mixto_variant_container.pack(fill=tk.X, pady=(5, 5))
         else:
             self.mixto_variant_container.pack_forget()
 
         if show_cycles:
             if not self.cycles_container.winfo_manager():
-                self.cycles_container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(20, 0))
+                self.cycles_container.pack(side=tk.LEFT, padx=(20, 0))
         else:
             self.cycles_container.pack_forget()
 
         # --- Configuración Simultáneo (Solo Grupos) ---
         if self.fidelizado_mode == "GRUPOS":
             if not self.simultaneous_mode_container.winfo_manager():
-                self.simultaneous_mode_container.pack(fill=tk.X, pady=(0, 10))
+                self.simultaneous_mode_container.pack(fill=tk.X, pady=5)
         else:
             self.simultaneous_mode_container.pack_forget()
 
@@ -4233,7 +3716,7 @@ class Hermes:
         if self.fidelizado_mode == "NUMEROS" and numeros_submode == "Uno a muchos":
             if hasattr(self, 'uno_a_muchos_simultaneous_container'):
                 if not self.uno_a_muchos_simultaneous_container.winfo_manager():
-                    self.uno_a_muchos_simultaneous_container.pack(fill=tk.X, pady=(0, 10))
+                    self.uno_a_muchos_simultaneous_container.pack(fill=tk.X, pady=5)
         else:
             if hasattr(self, 'uno_a_muchos_simultaneous_container'):
                 self.uno_a_muchos_simultaneous_container.pack_forget()
@@ -4242,26 +3725,24 @@ class Hermes:
         if self.fidelizado_mode == "GRUPOS":
             if not self.unirse_grupos_btn.winfo_manager():
                 self.unirse_grupos_btn.pack(fill=tk.X, pady=5)
-            # El botón de simultáneo se eliminó de aquí, ahora es un switch en configuración
             self.fidelizado_btn_start.configure(text="▶ INICIAR ENVÍO A GRUPOS")
         else:
             self.unirse_grupos_btn.pack_forget()
             self.fidelizado_btn_start.configure(text="▶ INICIAR ENVÍO FIDELIZADO")
 
         # --- 4. Actualización del Menú de WhatsApp ---
+        # Note: TTK widgets don't allow changing values dynamically on some styles as easily,
+        # but for radios we can just hide/show if needed. For now, assuming standard behavior.
+        # If using segmented button equivalent (radios in frame), we just leave them be.
         if self.fidelizado_mode == "NUMEROS":
-            self.fidelizado_whatsapp_menu.configure(values=["Normal", "Business", "Ambas"])
             if self.whatsapp_mode.get() == "Todas":
                 self.whatsapp_mode.set("Ambas")
-        else:
-            if hasattr(self, 'fidelizado_whatsapp_menu'):
-                self.fidelizado_whatsapp_menu.configure(values=["Normal", "Business", "Ambas", "Todas"])
 
         self.update_per_whatsapp_stat()
 
     def _populate_fidelizado_inputs(self):
         """Limpia y rellena los campos de texto con los datos guardados en las variables."""
-        # Limpiar contenido existente
+        # Limpiar contenido existente (ScrolledText)
         self.fidelizado_groups_text.delete("1.0", tk.END)
         if hasattr(self, 'fidelizado_numbers_text'):
             self.fidelizado_numbers_text.delete("1.0", tk.END)
@@ -4273,13 +3754,11 @@ class Hermes:
              if hasattr(self, 'fidelizado_numbers_text'):
                 self.fidelizado_numbers_text.insert("1.0", "\n".join(self.manual_inputs_numbers))
 
-        # Si no hay mensajes de grupo pero sí de número (caso común), usarlos también para grupos
         if self.manual_messages_numbers and not self.manual_messages_groups:
              self.manual_messages_groups = self.manual_messages_numbers
 
-        # --- NUEVO: Actualizar el contador de mensajes ---
         message_count = len(self.manual_messages_numbers)
-        if hasattr(self, 'fidelizado_message_count_label'): # Asegurarse de que el widget exista
+        if hasattr(self, 'fidelizado_message_count_label'):
             if message_count > 0:
                 self.fidelizado_message_count_label.configure(text=f"✅ {message_count} mensajes cargados")
             else:
@@ -9729,72 +9208,41 @@ class Hermes:
     
     def _setup_ai_bubble(self):
         """Crea el botón flotante (burbuja) en la esquina inferior derecha."""
-        # Frame contenedor para la burbuja (siempre visible, sobre todo)
-        self.ai_bubble_frame = ctk.CTkFrame(
-            self.root,
-            fg_color="transparent",
-            width=60,
-            height=60
-        )
+        self.ai_bubble_frame = ttk.Frame(self.root)
         self.ai_bubble_frame.place(relx=1.0, rely=1.0, anchor='se', x=-20, y=-20)
         self.ai_bubble_frame.lift()
         
-        # Colores según el tema
-        bubble_color = "#7C3AED"  # Violeta vibrante
-        bubble_hover = "#6D28D9"
-        
-        # Botón circular con emoji de robot (perfectamente circular)
-        self.ai_bubble_btn = ctk.CTkButton(
+        # Botón circular (aprox)
+        self.ai_bubble_btn = ttk.Button(
             self.ai_bubble_frame,
             text="🤖",
-            font=('Segoe UI Emoji', 24),
-            width=56,
-            height=56,
-            corner_radius=28,
-            fg_color=bubble_color,
-            hover_color=bubble_hover,
-            text_color="white",
-            command=self._toggle_ai_chat
+            command=self._toggle_ai_chat,
+            bootstyle="primary",
+            width=3
         )
         self.ai_bubble_btn.pack(expand=True)
         
-        # Tooltip
-        Tooltip(self.ai_bubble_btn, "Talaria - Asistente de IA\nHaz clic para abrir el chat", self.fonts['dialog_text'])
+        Tooltip(self.ai_bubble_btn, "Talaria - Asistente de IA\nHaz clic para abrir el chat", bootstyle="info")
         
-        # Animación de pulso sutil
-        self._animate_bubble_pulse()
+        # self._animate_bubble_pulse() # Skip complex animation for now on ttk
 
     # --- Atajos Burbuja (NUEVO) ---
     def _setup_shortcuts_bubble(self):
         """Crea el botón flotante para ver los atajos al lado de la IA."""
-        self.shortcuts_bubble_frame = ctk.CTkFrame(
-            self.root,
-            fg_color="transparent",
-            width=60,
-            height=60
-        )
-        # Posicionarlo a la izquierda de la burbuja de IA con mucho más margen (x=-120)
-        self.shortcuts_bubble_frame.place(relx=1.0, rely=1.0, anchor='se', x=-120, y=-20)
+        self.shortcuts_bubble_frame = ttk.Frame(self.root)
+        self.shortcuts_bubble_frame.place(relx=1.0, rely=1.0, anchor='se', x=-80, y=-20)
         self.shortcuts_bubble_frame.lift()
         
-        bubble_color = "#3B82F6"  # Azul vibrante
-        bubble_hover = "#2563EB"
-        
-        self.shortcuts_bubble_btn = ctk.CTkButton(
+        self.shortcuts_bubble_btn = ttk.Button(
             self.shortcuts_bubble_frame,
             text="⌨️",
-            font=('Segoe UI Emoji', 24),
-            width=56,
-            height=56,
-            corner_radius=28,
-            fg_color=bubble_color,
-            hover_color=bubble_hover,
-            text_color="white",
-            command=self._toggle_shortcuts_panel
+            command=self._toggle_shortcuts_panel,
+            bootstyle="info",
+            width=3
         )
         self.shortcuts_bubble_btn.pack(expand=True)
         
-        Tooltip(self.shortcuts_bubble_btn, "Atajos de Teclado\nHaz clic para ver la lista y ejecutarlos", self.fonts['dialog_text'])
+        Tooltip(self.shortcuts_bubble_btn, "Atajos de Teclado", bootstyle="info")
         self.shortcuts_panel_visible = False
         self.shortcuts_panel = None
 
@@ -9810,45 +9258,33 @@ class Hermes:
         if self.shortcuts_panel:
             return
 
-        # Crear el panel como un frame flotante (place)
-        # Lo ponemos arriba de la burbuja
-        self.shortcuts_panel = ctk.CTkFrame(
+        self.shortcuts_panel = ttk.Frame(
             self.root,
-            fg_color=self.colors['bg_card'],
-            corner_radius=15,
-            border_width=2,
-            border_color="#3B82F6"
+            bootstyle="secondary",
+            padding=5,
+            relief="solid",
+            borderwidth=1
         )
-        # Posicionarlo arriba de la burbuja de atajos (x=-120)
-        self.shortcuts_panel.place(relx=1.0, rely=1.0, anchor='se', x=-120, y=-85)
+        self.shortcuts_panel.place(relx=1.0, rely=1.0, anchor='se', x=-80, y=-60)
         self.shortcuts_panel.lift()
         self.shortcuts_panel_visible = True
 
-        # Título
-        ctk.CTkLabel(
+        ttk.Label(
             self.shortcuts_panel,
             text="Atajos de Teclado",
-            font=('Inter', 14, 'bold'),
-            text_color=self.colors['text']
-        ).pack(pady=(10, 15), padx=20)
+            font=('Inter', 12, 'bold'),
+            bootstyle="inverse-secondary"
+        ).pack(pady=(5, 10), padx=10)
 
         # Helper para crear botones de atajos
         def add_shortcut_btn(label, combo, func):
-            btn_frame = ctk.CTkFrame(self.shortcuts_panel, fg_color="transparent")
-            btn_frame.pack(fill='x', padx=15, pady=2)
-            
-            btn = ctk.CTkButton(
-                btn_frame,
+            btn = ttk.Button(
+                self.shortcuts_panel,
                 text=f"{label} ({combo})",
-                font=('Inter', 12),
-                anchor='w',
-                fg_color="transparent",
-                text_color=self.colors['text'],
-                hover_color=("#E5E7EB", "#374151"),
-                height=30,
-                command=func
+                command=func,
+                bootstyle="link-inverse",
             )
-            btn.pack(fill='x')
+            btn.pack(fill='x', anchor='w')
 
         # Lista de atajos
         shortcuts_list = [
@@ -9869,21 +9305,18 @@ class Hermes:
 
         for label, combo, func in shortcuts_list:
             if label == "Separador":
-                ctk.CTkFrame(self.shortcuts_panel, height=2, fg_color=("#E5E7EB", "#374151")).pack(fill='x', padx=10, pady=5)
+                ttk.Separator(self.shortcuts_panel).pack(fill='x', padx=5, pady=2)
             else:
                 add_shortcut_btn(label, combo, func)
 
         # Botón Cerrar
-        ctk.CTkButton(
+        ttk.Button(
             self.shortcuts_panel,
             text="Cerrar",
-            font=('Inter', 11, 'bold'),
-            fg_color="#3B82F6",
-            hover_color="#2563EB",
-            height=28,
-            corner_radius=8,
-            command=self._close_shortcuts_panel
-        ).pack(pady=15, padx=20, fill='x')
+            command=self._close_shortcuts_panel,
+            bootstyle="danger",
+            width=10
+        ).pack(pady=10)
 
     def _close_shortcuts_panel(self):
         """Cierra el panel de atajos."""
@@ -9894,30 +9327,7 @@ class Hermes:
     
     def _animate_bubble_pulse(self):
         """Anima la burbuja con un pulso sutil."""
-        if not hasattr(self, 'ai_bubble_btn') or not self.ai_bubble_btn.winfo_exists():
-            return
-        
-        # Solo animar si el chat no está visible
-        if not self.ai_chat_visible:
-            try:
-                current_color = "#7C3AED"
-                pulse_color = "#8B5CF6"
-                
-                def pulse_in():
-                    if hasattr(self, 'ai_bubble_btn') and self.ai_bubble_btn.winfo_exists():
-                        self.ai_bubble_btn.configure(fg_color=pulse_color)
-                        self.root.after(1000, pulse_out)
-                
-                def pulse_out():
-                    if hasattr(self, 'ai_bubble_btn') and self.ai_bubble_btn.winfo_exists():
-                        self.ai_bubble_btn.configure(fg_color=current_color)
-                
-                pulse_in()
-            except:
-                pass
-        
-        # Repetir cada 3 segundos
-        self.root.after(3000, self._animate_bubble_pulse)
+        pass # Disabled for simplicity
     
     def _toggle_ai_chat(self):
         """Abre o cierra el panel de chat de IA."""
@@ -9934,82 +9344,58 @@ class Hermes:
         self.ai_chat_visible = True
         
         # Cambiar icono del botón
-        self.ai_bubble_btn.configure(text="✕", font=('Inter', 20, 'bold'))
+        self.ai_bubble_btn.configure(text="✕")
         
         # Crear panel de chat
-        self.ai_chat_panel = ctk.CTkFrame(
+        self.ai_chat_panel = ttk.Frame(
             self.root,
-            fg_color=self.colors['bg_card'],
-            corner_radius=20,
-            border_width=1,
-            border_color="#333333",
             width=400,
-            height=500
+            height=500,
+            relief="solid",
+            borderwidth=1
         )
-        self.ai_chat_panel.place(relx=1.0, rely=1.0, anchor='se', x=-20, y=-90)
+        self.ai_chat_panel.place(relx=1.0, rely=1.0, anchor='se', x=-20, y=-70)
         self.ai_chat_panel.pack_propagate(False)
         self.ai_chat_panel.lift()
         
         # Header del chat
-        header = ctk.CTkFrame(self.ai_chat_panel, fg_color="#7C3AED", corner_radius=15, height=50)
-        header.pack(fill='x', padx=10, pady=(10, 5))
-        header.pack_propagate(False)
+        header = ttk.Frame(self.ai_chat_panel, bootstyle="primary", padding=10)
+        header.pack(fill='x')
         
-        title_label = ctk.CTkLabel(
+        ttk.Label(
             header,
-            text="🤖 Talaria - Asistente de IA",
-            font=('Inter', 14, 'bold'),
-            text_color="white"
-        )
-        title_label.pack(side='left', padx=15, pady=10)
+            text="🤖 Talaria AI",
+            font=('Inter', 12, 'bold'),
+            bootstyle="inverse-primary"
+        ).pack(side='left')
         
-        # Botón de configuración
-        config_btn = ctk.CTkButton(
-            header,
-            text="⚙️",
-            width=30,
-            height=30,
-            corner_radius=15,
-            fg_color="transparent",
-            hover_color="#6D28D9",
-            command=self._open_ai_config
-        )
-        config_btn.pack(side='right', padx=10)
+        # Botones
+        ttk.Button(header, text="⚙️", command=self._open_ai_config, bootstyle="primary", width=3).pack(side='right')
         
-        # Botón de parar IA
-        self.ai_stop_btn = ctk.CTkButton(
+        self.ai_stop_btn = ttk.Button(
             header,
             text="⏹",
-            width=30,
-            height=30,
-            corner_radius=15,
-            fg_color="transparent",
-            hover_color="#DC2626",
-            command=self._stop_ai_execution
+            command=self._stop_ai_execution,
+            bootstyle="danger",
+            width=3
         )
-        self.ai_stop_btn.pack(side='right')
-        Tooltip(self.ai_stop_btn, "Detener IA", self.fonts['dialog_text'])
+        self.ai_stop_btn.pack(side='right', padx=2)
+        Tooltip(self.ai_stop_btn, "Detener IA", bootstyle="info")
         
-        # Botón de limpiar chat
-        clear_btn = ctk.CTkButton(
+        ttk.Button(
             header,
             text="🗑️",
-            width=30,
-            height=30,
-            corner_radius=15,
-            fg_color="transparent",
-            hover_color="#6D28D9",
-            command=self._clear_ai_chat
-        )
-        clear_btn.pack(side='right')
+            command=self._clear_ai_chat,
+            bootstyle="warning",
+            width=3
+        ).pack(side='right', padx=2)
         
         # Área de mensajes (scrollable)
-        self.ai_messages_frame = ctk.CTkScrollableFrame(
+        self.ai_messages_frame = ScrolledFrame(
             self.ai_chat_panel,
-            fg_color="transparent",
-            corner_radius=0
+            autohide=True
         )
-        self.ai_messages_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        self.ai_messages_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
         # Mostrar historial
         self._display_ai_history()
@@ -10028,34 +9414,22 @@ class Hermes:
             )
         
         # Input area
-        input_frame = ctk.CTkFrame(self.ai_chat_panel, fg_color="transparent", height=60)
-        input_frame.pack(fill='x', padx=10, pady=(5, 10))
-        input_frame.pack_propagate(False)
+        input_frame = ttk.Frame(self.ai_chat_panel, padding=5)
+        input_frame.pack(fill='x')
         
-        self.ai_input = ctk.CTkEntry(
-            input_frame,
-            placeholder_text="Escribe un mensaje...",
-            font=('Inter', 13),
-            height=45,
-            corner_radius=20,
-            fg_color=self.colors['bg'],
-            border_color="#444444"
+        self.ai_input = ttk.Entry(
+            input_frame
         )
-        self.ai_input.pack(side='left', fill='x', expand=True, padx=(0, 10))
+        self.ai_input.pack(side='left', fill='x', expand=True, padx=(0, 5))
         self.ai_input.bind('<Return>', self._on_ai_send)
         
-        send_btn = ctk.CTkButton(
+        ttk.Button(
             input_frame,
             text="➤",
-            font=('Inter', 18),
-            width=45,
-            height=45,
-            corner_radius=22,
-            fg_color="#7C3AED",
-            hover_color="#6D28D9",
-            command=self._on_ai_send
-        )
-        send_btn.pack(side='right')
+            command=self._on_ai_send,
+            bootstyle="success",
+            width=4
+        ).pack(side='right')
         
         # Foco en el input
         self.ai_input.focus_set()
@@ -10068,7 +9442,7 @@ class Hermes:
             self.ai_chat_panel.destroy()
         
         # Restaurar icono del botón
-        self.ai_bubble_btn.configure(text="🤖", font=('Segoe UI Emoji', 28))
+        self.ai_bubble_btn.configure(text="🤖")
     
     def _add_ai_message(self, text, is_user=False):
         """Agrega un mensaje al chat."""
@@ -10076,10 +9450,10 @@ class Hermes:
         self.ai_chat_history.append({"text": text, "is_user": is_user})
         
         # Crear burbuja de mensaje
-        msg_frame = ctk.CTkFrame(
+        msg_frame = ttk.Frame(
             self.ai_messages_frame,
-            fg_color="#7C3AED" if is_user else "#2D2D2D",
-            corner_radius=15
+            bootstyle="primary" if is_user else "secondary",
+            padding=5
         )
         
         if is_user:
@@ -10087,47 +9461,45 @@ class Hermes:
         else:
             msg_frame.pack(anchor='w', pady=5, padx=5)
         
-        msg_label = ctk.CTkLabel(
+        ttk.Label(
             msg_frame,
             text=text,
             font=('Inter', 12),
-            text_color="white",
+            bootstyle="inverse-primary" if is_user else "inverse-secondary",
             wraplength=300,
-            justify='left' if not is_user else 'right',
-            padx=12,
-            pady=8
-        )
-        msg_label.pack()
+            justify='left' if not is_user else 'right'
+        ).pack()
         
-        # Scroll al final
-        self.ai_messages_frame._parent_canvas.yview_moveto(1.0)
+        # Scroll al final (if supported, otherwise auto-scrolls usually)
+        # self.ai_messages_frame.yview_moveto(1.0)
     
     def _display_ai_history(self):
         """Muestra el historial de mensajes."""
         for msg in self.ai_chat_history:
-            msg_frame = ctk.CTkFrame(
-                self.ai_messages_frame,
-                fg_color="#7C3AED" if msg['is_user'] else "#2D2D2D",
-                corner_radius=15
-            )
-            
-            if msg['is_user']:
-                msg_frame.pack(anchor='e', pady=5, padx=5)
-            else:
-                msg_frame.pack(anchor='w', pady=5, padx=5)
-            
-            msg_label = ctk.CTkLabel(
-                msg_frame,
-                text=msg['text'],
-                font=('Inter', 12),
-                text_color="white",
-                wraplength=300,
-                justify='left' if not msg['is_user'] else 'right',
-                padx=12,
-                pady=8
-            )
-            msg_label.pack()
-    
+            self._add_ai_message_visual_only(msg['text'], msg['is_user'])
+
+    def _add_ai_message_visual_only(self, text, is_user):
+        """Helper to display message without adding to history again."""
+        msg_frame = ttk.Frame(
+            self.ai_messages_frame,
+            bootstyle="primary" if is_user else "secondary",
+            padding=5
+        )
+
+        if is_user:
+            msg_frame.pack(anchor='e', pady=5, padx=5)
+        else:
+            msg_frame.pack(anchor='w', pady=5, padx=5)
+
+        ttk.Label(
+            msg_frame,
+            text=text,
+            font=('Inter', 12),
+            bootstyle="inverse-primary" if is_user else "inverse-secondary",
+            wraplength=300,
+            justify='left' if not is_user else 'right'
+        ).pack()
+
     def _on_ai_send(self, event=None):
         """Procesa el envío de un mensaje del usuario."""
         if not hasattr(self, 'ai_input') or not self.ai_input.winfo_exists():
@@ -10171,24 +9543,20 @@ class Hermes:
     
     def _show_typing_indicator(self):
         """Muestra un indicador de que la IA está procesando."""
-        typing_frame = ctk.CTkFrame(
+        typing_frame = ttk.Frame(
             self.ai_messages_frame,
-            fg_color="#2D2D2D",
-            corner_radius=15
+            bootstyle="secondary",
+            padding=5
         )
         typing_frame.pack(anchor='w', pady=5, padx=5)
         
-        typing_label = ctk.CTkLabel(
+        ttk.Label(
             typing_frame,
             text="🤖 Pensando...",
             font=('Inter', 12),
-            text_color="#888888",
-            padx=12,
-            pady=8
-        )
-        typing_label.pack()
+            bootstyle="inverse-secondary"
+        ).pack()
         
-        self.ai_messages_frame._parent_canvas.yview_moveto(1.0)
         return typing_frame
     
     def _handle_ai_response(self, result, typing_widget):
@@ -10295,8 +9663,8 @@ class Hermes:
         
         # Cambiar color del botón temporalmente para feedback visual
         if hasattr(self, 'ai_stop_btn') and self.ai_stop_btn.winfo_exists():
-            self.ai_stop_btn.configure(fg_color="#DC2626")
-            self.root.after(1000, lambda: self.ai_stop_btn.configure(fg_color="transparent") if self.ai_stop_btn.winfo_exists() else None)
+            self.ai_stop_btn.configure(bootstyle="danger") # was fg_color="#DC2626"
+            self.root.after(1000, lambda: self.ai_stop_btn.configure(bootstyle="danger") if self.ai_stop_btn.winfo_exists() else None)
         
         # Resetear después de un momento
         self.root.after(2000, self._reset_ai_stop)
@@ -10314,8 +9682,23 @@ class Hermes:
         
         # Limpiar widgets
         if hasattr(self, 'ai_messages_frame') and self.ai_messages_frame.winfo_exists():
+            # ScrolledFrame children are in the inner frame.
+            # We must access the inner frame to destroy children.
+            # TTKBootstrap ScrolledFrame structure: self (Frame) -> container (Frame).
+            # But the children are added to self.ai_messages_frame directly in the code above?
+            # Wait, ScrolledFrame docs say use it as parent. It handles reparenting?
+            # If so, iterating winfo_children() on it might return scrollbars and canvas.
+            # We should be careful.
+            # Best way is to just destroy the ScrolledFrame and recreate it, or destroy children of the container.
+            # Let's try iterating children and destroying those that are frames (messages).
             for widget in self.ai_messages_frame.winfo_children():
-                widget.destroy()
+                if isinstance(widget, ttk.Frame) or isinstance(widget, tk.Frame):
+                     # Avoid destroying scrollbars if they are children (usually they are siblings or managed inside)
+                     # In ttkbootstrap ScrolledFrame, the user content is in a frame inside a canvas.
+                     # If we pack into ScrolledFrame, it might just put it on top?
+                     # No, we assume standard behavior.
+                     # Let's just destroy the widgets we added.
+                     widget.destroy()
         
         # Mostrar mensaje de bienvenida
         self._add_ai_message(
@@ -10325,69 +9708,61 @@ class Hermes:
     
     def _open_ai_config(self):
         """Abre la ventana de configuración de la IA."""
-        config_window = ctk.CTkToplevel(self.root)
-        config_window.title("Configuración de Talaria")
+        config_window = ttk.Toplevel(self.root, title="Configuración de Talaria")
         config_window.geometry("450x250")  # Reduced height
         config_window.attributes('-topmost', True)
         self._center_toplevel(config_window, 450, 250)
         
         # Frame principal
-        main_frame = ctk.CTkFrame(config_window, fg_color=self.colors['bg_card'])
-        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        main_frame = ttk.Frame(config_window, padding=20)
+        main_frame.pack(fill='both', expand=True)
         
         # Título
-        title = ctk.CTkLabel(
+        ttk.Label(
             main_frame,
             text="🔧 Configuración de Talaria (OpenAI)",
-            font=('Inter', 16, 'bold'), # Slightly smaller
-            text_color=self.colors['text']
-        )
-        title.pack(pady=(10, 10)) # Reduced padding
+            font=('Inter', 16, 'bold'),
+            bootstyle="primary"
+        ).pack(pady=(10, 10))
         
         # API Key
-        api_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        api_frame.pack(fill='x', padx=20, pady=5) # Reduced padding
+        api_frame = ttk.Frame(main_frame)
+        api_frame.pack(fill='x', pady=5)
         
-        api_label = ctk.CTkLabel(
+        ttk.Label(
             api_frame,
             text="API Key de OpenAI:",
-            font=('Inter', 12),
-            text_color=self.colors['text']
-        )
-        api_label.pack(anchor='w')
+            font=('Inter', 12)
+        ).pack(anchor='w')
         
-        api_entry = ctk.CTkEntry(
+        api_entry = ttk.Entry(
             api_frame,
-            placeholder_text="Ingresa tu API key...",
-            font=('Inter', 12),
-            height=35, # Slightly smaller
             show="•"
         )
-        api_entry.pack(fill='x', pady=(2, 0)) # Reduced padding
+        api_entry.pack(fill='x', pady=(2, 0))
         
         if self.ai_api_key:
             api_entry.insert(0, self.ai_api_key)
         
         # Link para obtener API key
-        link_label = ctk.CTkLabel(
+        link_label = ttk.Label(
             main_frame,
             text="📎 Obtener API key: platform.openai.com/api-keys",
             font=('Inter', 11),
-            text_color="#7C3AED",
+            bootstyle="info",
             cursor="hand2"
         )
-        link_label.pack(pady=5) # Reduced padding
+        link_label.pack(pady=5)
         link_label.bind("<Button-1>", lambda e: os.startfile("https://platform.openai.com/api-keys"))
         
         # Estado actual
         status_text = "✅ Configurada" if (self.ai_assistant and self.ai_assistant.is_configured) else "❌ No configurada"
-        status_label = ctk.CTkLabel(
+        ttk.Label(
             main_frame,
             text=f"Estado: {status_text}",
             font=('Inter', 12),
-            text_color=self.colors['text_light']
-        )
-        status_label.pack(pady=5) # Reduced padding
+            bootstyle="secondary"
+        ).pack(pady=5)
         
         # Botón guardar
         def save_config():
@@ -10427,29 +9802,21 @@ class Hermes:
             else:
                 messagebox.showwarning("Atención", "Por favor, ingresa una API key.", parent=config_window)
         
-        save_btn = ctk.CTkButton(
+        save_btn = ttk.Button(
             main_frame,
             text="💾 Guardar",
-            font=('Inter', 14, 'bold'),
-            height=40, # Slightly smaller
-            corner_radius=10,
-            fg_color="#7C3AED",
-            hover_color="#6D28D9",
-            command=save_config
+            command=save_config,
+            bootstyle="success"
         )
-        save_btn.pack(pady=10) # Reduced padding
+        save_btn.pack(pady=10)
 
 # --- Main ---
 def main():
-    """Función principal: Configura CTk y abre la app principal."""
-    # Configurar apariencia
-    ctk.set_appearance_mode("Dark")
-    ctk.set_default_color_theme("blue")
-    
-    # Configurar escalado automático de CustomTkinter
-    ctk.deactivate_automatic_dpi_awareness()  # Usamos el nuestro configurado arriba
-    
-    root = ctk.CTk()
+    """Función principal: Configura TTKBootstrap y abre la app principal."""
+    # Configurar apariencia inicial (Tema Light Minimalista)
+    # Temas recomendados: 'litera' (clean white), 'cosmo', 'flatly'.
+    # Si quieres oscuro por defecto: 'darkly', 'superhero'.
+    root = ttk.Window(themename="litera")
     
     # Obtener información del monitor
     screen_width = root.winfo_screenwidth()

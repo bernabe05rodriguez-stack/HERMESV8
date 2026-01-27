@@ -541,6 +541,7 @@ class Hermes:
         self.auto_detect_adb()
         self.setup_ui()
         self._init_ai_assistant()  # Inicializar IA después de setup_ui
+        self.detect_devices(silent=True)
 
     def _center_toplevel(self, window, width, height):
         """Centrar una ventana toplevel en la pantalla."""
@@ -1354,6 +1355,13 @@ class Hermes:
 
             if index == 1:
                 self.btn_detect = btn
+                self.lbl_detect_status_traditional = ctk.CTkLabel(
+                    row_frame,
+                    text="",
+                    font=self.fonts['setting_label'],
+                    text_color=self.colors['text_light']
+                )
+                self.lbl_detect_status_traditional.grid(row=1, column=1, sticky="ew", pady=(0, 5))
             elif index == 2:
                 self.btn_load = btn
 
@@ -1534,6 +1542,8 @@ class Hermes:
         )
         self.btn_stop.grid(row=0, column=1, sticky="ew", padx=(8, 0))
 
+        self._update_detection_labels()
+
     def setup_sms_view(self, parent):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
@@ -1617,6 +1627,13 @@ class Hermes:
 
             if index == 1:
                 self.sms_btn_detect = btn
+                self.lbl_detect_status_sms = ctk.CTkLabel(
+                    row_frame,
+                    text="",
+                    font=self.fonts['setting_label'],
+                    text_color=self.colors['text_light']
+                )
+                self.lbl_detect_status_sms.grid(row=1, column=1, sticky="ew", pady=(0, 5))
             elif index == 2:
                 self.sms_btn_load = btn
 
@@ -1838,6 +1855,8 @@ class Hermes:
         )
         self.sms_btn_stop.grid(row=0, column=1, sticky="ew", padx=(8, 0))
 
+        self._update_detection_labels()
+
     def setup_calls_view(self, parent):
         """Construye la interfaz de la vista 'Llamadas'."""
         parent.grid_columnconfigure(0, weight=1)
@@ -1889,6 +1908,14 @@ class Hermes:
             corner_radius=20, height=44
         )
         self.calls_btn_detect.grid(row=0, column=1, sticky='ew')
+
+        self.lbl_detect_status_calls = ctk.CTkLabel(
+            step1_row,
+            text="",
+            font=self.fonts['setting_label'],
+            text_color=self.colors['text_light']
+        )
+        self.lbl_detect_status_calls.grid(row=1, column=1, sticky="ew", pady=(0, 5))
 
         # --- Paso 2: Configuración ---
         step2_row = ctk.CTkFrame(calls_steps_wrapper, fg_color="transparent")
@@ -1989,6 +2016,8 @@ class Hermes:
             font=self.fonts['button_small'], corner_radius=18, height=40, state=tk.DISABLED
         )
         self.calls_btn_stop.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+
+        self._update_detection_labels()
 
     def setup_right(self, parent):
         # Bloque 1: Estado y Progreso
@@ -3466,6 +3495,27 @@ class Hermes:
                 self.adb_path.set(p)
                 break
 
+    def _update_detection_labels(self):
+        """Actualiza las etiquetas de estado de detección en todas las vistas."""
+        count = len(self.devices)
+        if count > 0:
+            text = f"{count} dispositivos detectados"
+            color = self.colors['green']
+        else:
+            text = "0 dispositivos detectados"
+            color = self.colors['log_error']
+
+        def update_label(attr_name):
+            lbl = getattr(self, attr_name, None)
+            if lbl and lbl.winfo_exists():
+                lbl.configure(text=text, text_color=color)
+
+        update_label('lbl_detect_status_traditional')
+        update_label('lbl_detect_status_sms')
+        update_label('lbl_detect_status_calls')
+
+        self._update_device_labels()
+
     def detect_devices(self, silent=False):
         """Ejecuta 'adb devices' y actualiza la lista de dispositivos."""
         adb = self.adb_path.get()
@@ -3492,7 +3542,7 @@ class Hermes:
             self.devices = [l.split('\t')[0] for l in res.stdout.strip().split('\n')[1:] if '\tdevice' in l]
 
             # Actualizar las etiquetas de la UI
-            self._update_device_labels()
+            self._update_detection_labels()
 
             # Despertar pantallas (silencioso)
             if self.devices:
@@ -3505,12 +3555,12 @@ class Hermes:
 
             if self.devices:
                 self.log(f"✓ {len(self.devices)} disp: {', '.join(self.devices)}", 'success')
-                if not silent:
-                    messagebox.showinfo("Dispositivos", f"{len(self.devices)} dispositivo(s) econtrado(s):\n\n" + "\n".join(self.devices))
+                # if not silent:
+                #     messagebox.showinfo("Dispositivos", f"{len(self.devices)} dispositivo(s) econtrado(s):\n\n" + "\n".join(self.devices))
             else:
                 self.log("No encontrados.", 'error')
-                if not silent:
-                    messagebox.showwarning("Dispositivos", "No se encontraron dispositivos.\nAsegúrate de conectar tu teléfono, activar la 'Depuración USB' y autorizar la conexión en el móvil.")
+                # if not silent:
+                #     messagebox.showwarning("Dispositivos", "No se encontraron dispositivos.\nAsegúrate de conectar tu teléfono, activar la 'Depuración USB' y autorizar la conexión en el móvil.")
         except subprocess.TimeoutExpired:
             self.log("Timeout ADB.", 'error')
             if not silent:

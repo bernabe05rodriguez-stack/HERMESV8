@@ -3408,9 +3408,15 @@ class Hermes:
 
         if not self.devices:
             self.log("No hay dispositivos detectados para ejecutar el atajo.", "warning")
+            # --- FIX: Asegurar foco aunque falle ---
+            self.root.focus_set()
             return
 
         self.log(f"Ejecutando atajo: {action_name} en {len(self.devices)} dispositivos...", "info")
+
+        # --- FIX: Re-aplicar bindings y foco para evitar que se pierdan tras la interacción ---
+        self.root.focus_set()
+        self.setup_global_shortcuts()
 
         def task():
             threads = []
@@ -3513,6 +3519,10 @@ class Hermes:
             self.log(f"Error al detectar: {e}", 'error')
             if not silent:
                 messagebox.showerror("Error", f"Error: {e}")
+        finally:
+            # --- FIX: Asegurar que el foco vuelva a la ventana principal ---
+            if not silent:
+                self.root.focus_set()
 
     # --- Lógica de archivos ---
     def read_csv_file(self, fp):
@@ -7879,6 +7889,10 @@ class Hermes:
             self._recursive_set_blocking(area, block=False)
 
         self._blocked_widgets_state.clear()
+
+        # --- FIX: Restaurar foco y re-aplicar atajos para evitar pérdida de control ---
+        self.root.focus_set()
+        self.setup_global_shortcuts()
 
     def _update_device_labels(self):
         """Actualiza todas las etiquetas de la UI que muestran la lista de dispositivos."""

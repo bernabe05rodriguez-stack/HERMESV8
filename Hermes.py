@@ -38,6 +38,7 @@ import tkinter.ttk as ttk
 from tkinter import filedialog, messagebox
 import os
 import threading
+import concurrent.futures
 from datetime import datetime, timedelta
 import sys
 import csv
@@ -2469,6 +2470,10 @@ class Hermes:
 
     def log(self, msg, tag='info'):
         """Añade un mensaje al registro de actividad con formato."""
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, lambda: self.log(msg, tag))
+            return
+
         ts = datetime.now().strftime("[%H:%M:%S]")
         icon = "✓"
         add_space_before = False
@@ -2845,11 +2850,16 @@ class Hermes:
 
         self.log(f"Iniciando cambio de cuenta inteligente en {len(self.devices)} dispositivo(s)...", 'info')
 
-        threads = []
-        for device in self.devices:
-            t = threading.Thread(target=self._smart_switch_account_on_device, args=(device,), daemon=True)
-            t.start()
-            threads.append(t)
+        devices_copy = list(self.devices)
+
+        def run_parallel():
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(devices_copy)) as executor:
+                    executor.map(self._smart_switch_account_on_device, devices_copy)
+            except Exception as e:
+                self.log(f"Error ejecutando cambio de cuenta en paralelo: {e}", 'error')
+
+        threading.Thread(target=run_parallel, daemon=True).start()
 
     def _shortcut_mirror_mode(self):
         """Activa el modo espejo: abre scrcpy para el teléfono maestro y replica clicks en los demás."""

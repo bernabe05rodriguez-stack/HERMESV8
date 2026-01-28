@@ -2780,6 +2780,7 @@ class Hermes:
             ("<Control-Key-6>", self._shortcut_mirror_mode),
             ("<Control-Key-7>", self._shortcut_google_contacts),
             ("<Control-Key-8>", self._shortcut_close_all),
+            ("<Control-Key-9>", self._shortcut_smart_switch),
             # Teclado numérico (Numpad)
             ("<Control-KP_1>", self._shortcut_whatsapp_business),
             ("<Control-KP_2>", self._shortcut_whatsapp_normal),
@@ -2789,6 +2790,7 @@ class Hermes:
             ("<Control-KP_6>", self._shortcut_mirror_mode),
             ("<Control-KP_7>", self._shortcut_google_contacts),
             ("<Control-KP_8>", self._shortcut_close_all),
+            ("<Control-KP_9>", self._shortcut_smart_switch),
             # Atajos para cambiar perfiles de usuario (Ctrl+Alt+1,2,3,4)
             ("<Control-Alt-Key-1>", self._shortcut_profile_1),
             ("<Control-Alt-Key-2>", self._shortcut_profile_2),
@@ -2833,6 +2835,21 @@ class Hermes:
 
     def _shortcut_close_all(self):
         self._execute_shortcut_action("close_all", "Cerrar Todo")
+
+    def _shortcut_smart_switch(self):
+        """Atajo para cambiar de cuenta en WhatsApp si el botón existe."""
+        self.detect_devices(silent=True)
+        if not self.devices:
+            self.log("No hay dispositivos detectados.", "warning")
+            return
+
+        self.log(f"Iniciando cambio de cuenta inteligente en {len(self.devices)} dispositivo(s)...", 'info')
+
+        threads = []
+        for device in self.devices:
+            t = threading.Thread(target=self._smart_switch_account_on_device, args=(device,), daemon=True)
+            t.start()
+            threads.append(t)
 
     def _shortcut_mirror_mode(self):
         """Activa el modo espejo: abre scrcpy para el teléfono maestro y replica clicks en los demás."""
@@ -8994,6 +9011,55 @@ class Hermes:
             self.log(f"✗ Error al cambiar cuenta en {device}: {str(e)}", 'error')
             return False
 
+    def _smart_switch_account_on_device(self, device_serial):
+        """Lógica inteligente para cambiar de cuenta usando UI Automator."""
+        try:
+            self.log(f"[{device_serial}] Conectando para cambio inteligente...", 'info')
+            d = u2.connect(device_serial)
+            d.unlock()
+
+            # 1. Abrir WhatsApp Normal
+            self.log(f"[{device_serial}] Abriendo WhatsApp...", 'info')
+            d.app_start("com.whatsapp")
+
+            if not d.wait_activity(".Main", timeout=10):
+                self.log(f"[{device_serial}] No se detectó la actividad principal de WhatsApp.", 'warning')
+                # Continuamos igual por si acaso ya estaba abierto
+
+            time.sleep(1.5)
+
+            # 2. Buscar y clicar los 3 puntos (More options)
+            self.log(f"[{device_serial}] Buscando menú (3 puntos)...", 'info')
+
+            # Estrategia combinada para encontrar el botón de menú
+            menu_btn = d(descriptionMatches="(?i)(m[áa]s opciones|more options)")
+            if not menu_btn.exists:
+                menu_btn = d(resourceId="com.whatsapp:id/menu_item_overflow")
+
+            if menu_btn.exists:
+                menu_btn.click()
+                time.sleep(1.0) # Esperar a que el menú se despliegue
+
+                # 3. Buscar "Cambiar de cuenta"
+                self.log(f"[{device_serial}] Buscando opción 'Cambiar de cuenta'...", 'info')
+
+                # Regex para encontrar "Cambiar cuentas" o "Switch accounts"
+                switch_btn = d(textMatches="(?i)(cambiar (de )?cuenta|switch account(s)?)")
+
+                if switch_btn.exists:
+                    self.log(f"[{device_serial}] ¡Botón encontrado! Clickeando...", 'success')
+                    switch_btn.click()
+                    self.log(f"[{device_serial}] Cambio de cuenta iniciado.", 'success')
+                else:
+                    self.log(f"[{device_serial}] Botón 'Cambiar de cuenta' NO encontrado.", 'warning')
+                    self.log(f"[{device_serial}] Cerrando menú...", 'info')
+                    d.press("back") # Cerrar el menú para no dejarlo abierto
+            else:
+                self.log(f"[{device_serial}] No se encontró el botón de menú (3 puntos).", 'error')
+
+        except Exception as e:
+            self.log(f"[{device_serial}] Error en smart switch: {e}", 'error')
+
 
     def detect_phone_numbers_thread(self):
         """Inicia la detección de números de teléfono en un hilo separado."""
@@ -9915,6 +9981,7 @@ class Hermes:
             ("Modo Espejo", "Ctrl + 6", self._shortcut_mirror_mode),
             ("Contactos", "Ctrl + 7", self._shortcut_google_contacts),
             ("Cerrar Apps", "Ctrl + 8", self._shortcut_close_all),
+            ("Cambiar Cuenta (Smart)", "Ctrl + 9", self._shortcut_smart_switch),
             ("Separador", "", None),
             ("Perfil 1", "Ctrl+Alt+1", self._shortcut_profile_1),
             ("Perfil 2", "Ctrl+Alt+2", self._shortcut_profile_2),

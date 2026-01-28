@@ -9024,48 +9024,54 @@ class Hermes:
     def _smart_switch_account_on_device(self, device_serial):
         """Lógica inteligente para cambiar de cuenta usando UI Automator."""
         try:
-            self.log(f"[{device_serial}] Conectando para cambio inteligente...", 'info')
+            self.log(f"[{device_serial}] Conectando para cambio inteligente (Usuario: Teléfono ya abierto en WhatsApp)...", 'info')
             d = u2.connect(device_serial)
-            d.unlock()
 
-            # 1. Abrir WhatsApp Normal
-            self.log(f"[{device_serial}] Abriendo WhatsApp...", 'info')
-            d.app_start("com.whatsapp")
+            # NOTA: Se eliminó d.unlock() y d.app_start() por petición del usuario que dejará el teléfono listo.
+            # Solo buscamos los 3 puntitos y actuamos.
 
-            if not d.wait_activity(".Main", timeout=10):
-                self.log(f"[{device_serial}] No se detectó la actividad principal de WhatsApp.", 'warning')
-                # Continuamos igual por si acaso ya estaba abierto
-
-            time.sleep(1.5)
-
-            # 2. Buscar y clicar los 3 puntos (More options)
+            # 1. Buscar y clicar los 3 puntos (More options)
             self.log(f"[{device_serial}] Buscando menú (3 puntos)...", 'info')
 
-            # Estrategia combinada para encontrar el botón de menú
-            menu_btn = d(descriptionMatches="(?i)(m[áa]s opciones|more options)")
-            if not menu_btn.exists:
-                menu_btn = d(resourceId="com.whatsapp:id/menu_item_overflow")
+            # Intentar encontrar el botón con una pequeña espera para robustez
+            menu_btn = None
 
-            if menu_btn.exists:
+            # Prioridad 1: Resource ID
+            if d(resourceId="com.whatsapp:id/menu_item_overflow").wait(timeout=2.0):
+                 menu_btn = d(resourceId="com.whatsapp:id/menu_item_overflow")
+            # Prioridad 2: Descripción
+            elif d(descriptionMatches="(?i)(m[áa]s opciones|more options)").wait(timeout=1.0):
+                 menu_btn = d(descriptionMatches="(?i)(m[áa]s opciones|more options)")
+
+            if menu_btn and menu_btn.exists:
                 menu_btn.click()
                 time.sleep(1.0) # Esperar a que el menú se despliegue
 
-                # 3. Buscar "Cambiar de cuenta"
+                # 2. Buscar "Cambiar de cuenta"
                 self.log(f"[{device_serial}] Buscando opción 'Cambiar de cuenta'...", 'info')
 
                 # Regex para encontrar "Cambiar cuentas" o "Switch accounts"
-                switch_btn = d(textMatches="(?i)(cambiar (de )?cuenta|switch account(s)?)")
+                switch_btn_selector = "(?i)(cambiar (de )?cuenta|switch account(s)?)"
+                switch_btn = d(textMatches=switch_btn_selector)
 
                 if switch_btn.exists:
-                    self.log(f"[{device_serial}] ¡Botón encontrado! Clickeando...", 'success')
+                    self.log(f"[{device_serial}] ¡Botón 'Cambiar de cuenta' encontrado! Clickeando...", 'success')
                     switch_btn.click()
                     self.log(f"[{device_serial}] Cambio de cuenta iniciado.", 'success')
                 else:
-                    self.log(f"[{device_serial}] Botón 'Cambiar de cuenta' NO encontrado.", 'warning')
-                    self.log(f"[{device_serial}] Cerrando menú...", 'info')
-                    d.press("back") # Cerrar el menú para no dejarlo abierto
+                    # "En caso que no diga nada, verificar nuevamente y no hacer nada"
+                    self.log(f"[{device_serial}] No apareció 'Cambiar de cuenta'. Verificando nuevamente...", 'warning')
+                    time.sleep(1.5) # Espera para verificar nuevamente
+
+                    if switch_btn.exists:
+                        self.log(f"[{device_serial}] ¡Botón encontrado en el segundo intento! Clickeando...", 'success')
+                        switch_btn.click()
+                        self.log(f"[{device_serial}] Cambio de cuenta iniciado.", 'success')
+                    else:
+                        self.log(f"[{device_serial}] Definitivamente no se encontró 'Cambiar de cuenta'. No se hace nada.", 'warning')
+                        # NO presionar back, por instrucción explícita: "no hacer nada"
             else:
-                self.log(f"[{device_serial}] No se encontró el botón de menú (3 puntos).", 'error')
+                self.log(f"[{device_serial}] No se encontraron los 3 puntitos. Verifica que WhatsApp esté abierto en primer plano.", 'error')
 
         except Exception as e:
             self.log(f"[{device_serial}] Error en smart switch: {e}", 'error')
